@@ -1,0 +1,116 @@
+# Dependabot-Konfiguration für SmartCity SensorBridge Partheland
+# Automatische Updates für Dependencies und GitHub Actions
+
+version: 2
+updates:
+  # Python-Dependencies (pip)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "makerspace-partheland"
+    assignees:
+      - "makerspace-partheland"
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    ignore:
+      # Ignoriere Pre-Release-Versionen
+      - dependency-name: "*"
+        update-types: ["version-update:semver-prerelease"]
+      # Spezifische Ignorierungen für kritische Dependencies
+      - dependency-name: "homeassistant"
+        update-types: ["version-update:semver-major"]
+        # Major-Updates von HA erfordern manuelle Prüfung
+      - dependency-name: "paho-mqtt"
+        update-types: ["version-update:semver-major"]
+        # Major-Updates von paho-mqtt erfordern manuelle Prüfung
+      - dependency-name: "aiohttp"
+        update-types: ["version-update:semver-major"]
+        # Major-Updates von aiohttp erfordern manuelle Prüfung
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "makerspace-partheland"
+    assignees:
+      - "makerspace-partheland"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    ignore:
+      # Ignoriere Pre-Release-Versionen
+      - dependency-name: "*"
+        update-types: ["version-update:semver-prerelease"]
+
+  # Development Dependencies (requirements-dev.txt falls vorhanden)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "makerspace-partheland"
+    assignees:
+      - "makerspace-partheland"
+    labels:
+      - "dependencies"
+      - "dev-deps"
+    commit-message:
+      prefix: "dev-deps"
+      include: "scope"
+    # Nur Development-Dependencies
+    allow:
+      - dependency-type: "development"
+    ignore:
+      # Ignoriere Pre-Release-Versionen
+      - dependency-name: "*"
+        update-types: ["version-update:semver-prerelease"]
+
+  # Home Assistant Core Monitoring (separater Update-Zyklus)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 1
+    reviewers:
+      - "makerspace-partheland"
+    assignees:
+      - "makerspace-partheland"
+    labels:
+      - "dependencies"
+      - "home-assistant"
+      - "breaking-changes"
+    commit-message:
+      prefix: "ha"
+      include: "scope"
+    # Nur Home Assistant Updates
+    allow:
+      - dependency-name: "homeassistant"
+    ignore:
+      # Ignoriere Pre-Release-Versionen
+      - dependency-name: "*"
+        update-types: ["version-update:semver-prerelease"] 

@@ -1,0 +1,953 @@
+{
+  "mqtt_config": {
+    "broker_url": "wss://mqtt.makerspace-partheland.de:443/mqtt",
+    "topics": [
+      {
+        "topic": "senseBox:home/+",
+        "name": "senseBox:home",
+        "type": "sensebox",
+        "description": "Alle senseBox:home Sensordaten (inkl. median)"
+      },
+      {
+        "topic": "sensoren/+",
+        "name": "Spezialisierte Sensoren",
+        "type": "specialized_sensors",
+        "description": "Spezialisierte Sensoren (Temperatur, Wasserstand)"
+      }
+    ]
+  },
+  "parsing": {
+    "sensebox": {
+      "data_path": "fields",
+      "median_detection": {
+        "topic_pattern": "senseBox:home/median",
+        "suffix": "_median"
+      }
+    },
+    "specialized_sensors": {
+      "data_path": "fields",
+      "ignore_rssi_only": true,
+      "rssi_only_threshold": 2
+    }
+  },
+  "sensor_categories": {
+    "temperature": ["Temperatur", "GehaeuseTemp", "WasserTemp", "LuftTemp", "TempC_SHT", "TempC_DS", "WasserTemp_1", "WasserTemp_2", "TempC1", "TempC2"],
+    "humidity": ["Luftfeuchte", "Hum_SHT"],
+    "pressure": ["Luftdruck"],
+    "air_quality": ["PM10", "PM2.5", "PM10_Max", "PM25_Max"],
+    "light": ["Beleuchtungsstaerke", "UV-Intensitaet"],
+    "noise": ["Lautstaerke", "Lautstaerke_Max"],
+    "water_level": ["water_level"]
+  },
+  "field_mapping": {
+    "units": {
+      "Temperatur": "°C",
+      "GehaeuseTemp": "°C",
+      "WasserTemp": "°C",
+      "WasserTemp_1": "°C",
+      "WasserTemp_2": "°C",
+      "LuftTemp": "°C",
+      "TempC_DS": "°C",
+      "TempC_SHT": "°C",
+      "TempC1": "°C",
+      "TempC2": "°C",
+      "Luftfeuchte": "%",
+      "Hum_SHT": "%",
+      "Luftdruck": "hPa",
+      "PM10": "µg/m³",
+      "PM2.5": "µg/m³",
+      "PM10_Max": "µg/m³",
+      "PM25_Max": "µg/m³",
+      "Beleuchtungsstaerke": "lx",
+      "Lautstaerke": "dB",
+      "Lautstaerke_Max": "dB",
+      "UV-Intensitaet": "W/m²",
+      "water_level": "cm"
+    },
+    "device_classes": {
+      "Temperatur": "TEMPERATURE",
+      "GehaeuseTemp": "TEMPERATURE",
+      "WasserTemp": "TEMPERATURE",
+      "WasserTemp_1": "TEMPERATURE",
+      "WasserTemp_2": "TEMPERATURE",
+      "LuftTemp": "TEMPERATURE",
+      "TempC_DS": "TEMPERATURE",
+      "TempC_SHT": "TEMPERATURE",
+      "TempC1": "TEMPERATURE",
+      "TempC2": "TEMPERATURE",
+      "Luftfeuchte": "HUMIDITY",
+      "Hum_SHT": "HUMIDITY",
+      "Luftdruck": "PRESSURE",
+      "PM10": "PM10",
+      "PM2.5": "PM25",
+      "PM10_Max": "PM10",
+      "PM25_Max": "PM25",
+      "Beleuchtungsstaerke": "ILLUMINANCE",
+      "Lautstaerke": "SOUND_PRESSURE",
+      "Lautstaerke_Max": "SOUND_PRESSURE",
+      "UV-Intensitaet": "IRRADIANCE",
+      "water_level": "WATER_LEVEL"
+    },
+    "icons": {
+      "TEMPERATURE": "mdi:thermometer",
+      "HUMIDITY": "mdi:water-percent",
+      "PRESSURE": "mdi:gauge",
+      "PM25": "mdi:air-filter",
+      "PM10": "mdi:air-filter",
+      "ILLUMINANCE": "mdi:brightness-5",
+      "SOUND_PRESSURE": "mdi:volume-high",
+      "IRRADIANCE": "mdi:weather-sunny",
+      "WATER_LEVEL": "mdi:water",
+      "default": "mdi:sensor"
+    },
+    "device_class_enums": {
+      "TEMPERATURE": "SensorDeviceClass.TEMPERATURE",
+      "HUMIDITY": "SensorDeviceClass.HUMIDITY",
+      "PRESSURE": "SensorDeviceClass.PRESSURE",
+      "PM25": "SensorDeviceClass.PM25",
+      "PM10": "SensorDeviceClass.PM10",
+      "ILLUMINANCE": "SensorDeviceClass.ILLUMINANCE",
+      "SOUND_PRESSURE": "SensorDeviceClass.SOUND_PRESSURE",
+      "IRRADIANCE": "SensorDeviceClass.IRRADIANCE",
+      "WATER_LEVEL": "None"
+    }
+  },
+  "known_devices": {
+    "senseBox": [
+      {
+        "id": "Ammelshain_Nr1",
+        "name": "Station Ammelshain Nr 1",
+        "topic_pattern": "senseBox:home/Ammelshain_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6436f8db5a16e30008392212",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/d0c720a0-0d5b-49f6-9fb2-05a721339b53/station-ammelshain-nr-1"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Belgershain_Nr1",
+        "name": "Station Belgershain Nr 1",
+        "topic_pattern": "senseBox:home/Belgershain_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/64ac134b32ec2e0008b557d9",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/a48ee78b-680c-4bcc-83e4-7365dadccac0/station-belgershain"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Beucha_Nr1",
+        "name": "Station Beucha Nr 1",
+        "topic_pattern": "senseBox:home/Beucha_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6214b789ef6200001d2971bc",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/XrweFEQnk/station-beucha-nummer-1?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Beucha_Nr2",
+        "name": "Station Beucha Nr 2",
+        "topic_pattern": "senseBox:home/Beucha_Nr2",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/628f602a93301c001bde6854",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/r212et9nz/station-beucha-nummer-2?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Beucha_Nr3",
+        "name": "Station Beucha Nr 3",
+        "topic_pattern": "senseBox:home/Beucha_Nr3",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/63f3bd4a5b6bb2000843cb27",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/WbU90u-4k/station-beucha-nr-3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Brandis_Nr0",
+        "name": "Station Brandis Rathaus",
+        "topic_pattern": "senseBox:home/Brandis_Nr0",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/630fc22acb8f2a001bd6b610",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/A_fx6pr7z/station-brandis-nummer-0?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Brandis_Nr1",
+        "name": "Station Brandis Nr 1",
+        "topic_pattern": "senseBox:home/Brandis_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/628f63a593301c001be011aa",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/A_fx6pr7z/station-brandis-nummer-1?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Brandis_Nr2",
+        "name": "Station Brandis Nr 2",
+        "topic_pattern": "senseBox:home/Brandis_Nr2",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/62950af5361e06001c88e2a0",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/lmeL6pr7z/station-brandis-nummer-2?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Brandis_Nr3",
+        "name": "Station Brandis Nr 3",
+        "topic_pattern": "senseBox:home/Brandis_Nr3",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/62f4f34fafd2ad001c5d020f",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/l2eL6qr4x/station-brandis-nummer-3?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Brandis_Nr5",
+        "name": "Station Brandis Nr 5",
+        "topic_pattern": "senseBox:home/Brandis_Nr5",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/643707a95a16e3000841f57b",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/f541d24d-27c4-41a0-8d90-877a47efd74c/station-brandis-nr-5"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Dreiskau-Muckern_Nr1",
+        "name": "Station Dreiskau-Muckern Nr 1",
+        "topic_pattern": "senseBox:home/Dreiskau-Muckern_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/67292906df464500076de659",
+          "makerspace": "https://sensoren.makerspace-partheland.de/goto/6PAmgcGNR?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Dreiskau-Muckern_Nr2",
+        "name": "Station Dreiskau-Muckern Nr 2",
+        "topic_pattern": "senseBox:home/Dreiskau-Muckern_Nr2",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/672f773a5f78e90007d2510c",
+          "makerspace": "https://sensoren.makerspace-partheland.de/goto/xgjkg5MNR?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Grosspoesna_Nr1",
+        "name": "Station Großpösna Nr 1",
+        "topic_pattern": "senseBox:home/Grosspoesna_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/643702525a16e300083ec66d",
+          "makerspace": "https://sensoren.makerspace-partheland.de/goto/NYv0ndkHg?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Grosspoesna_Nr2",
+        "name": "Station Großpösna Nr 2",
+        "topic_pattern": "senseBox:home/Grosspoesna_Nr2",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/66fd96a31ccdcf00076a0b3e",
+          "makerspace": "https://sensoren.makerspace-partheland.de/goto/nW-bnOzNg?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Grosssteinberg_Nr1",
+        "name": "Station Grosssteinberg Nr 1",
+        "topic_pattern": "senseBox:home/Grosssteinberg_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6436f8415a16e3000838c610",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/da0bf8df-84e8-49e4-ad80-f0c0b682f6e6/station-grosssteinberg"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Klinga_Nr1",
+        "name": "Station Klinga Nr 1",
+        "topic_pattern": "senseBox:home/Klinga_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6436f9475a16e300083963a8",
+          "makerspace": "https://sensoren.makerspace-partheland.de/goto/VDQ4nAj4g?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Lindhardt_Nr1",
+        "name": "Station Lindhardt Nr 1",
+        "topic_pattern": "senseBox:home/Lindhardt_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/67f6b5946566030007dcd961",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/02a63f6b-e101-440a-bed4-53279fa8e967/station-lindhardt"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Machern_Nr1",
+        "name": "Station Machern Nr 1",
+        "topic_pattern": "senseBox:home/Machern_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/66fd99d21ccdcf00076f6cc1",
+          "makerspace": "https://sensoren.makerspace-partheland.de/goto/orcSndzNg?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Naunhof_Nr1",
+        "name": "Station Naunhof Nr 1",
+        "topic_pattern": "senseBox:home/Naunhof_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/62115bc4e00700001bec2e11",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/f03fd776-08e7-4537-a463-b13c85e415e1/station-naunhof-nr-1"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Naunhof_Nr3",
+        "name": "Station Naunhof Nr 3",
+        "topic_pattern": "senseBox:home/Naunhof_Nr3",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6436f5a65a16e3000837345f",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/ac63d84d-ec8d-472b-ae93-ed7b6c64ae1d/station-naunhof-nr-3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Naunhof_Nr4",
+        "name": "Station Naunhof Nr 4",
+        "topic_pattern": "senseBox:home/Naunhof_Nr4",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6436f63b5a16e30008378ea0",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/34984248-0db5-4faa-9e6c-6482d4747ec/station-naunhof-nr-4"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Naunhof_Nr5",
+        "name": "Station Naunhof Nr 5",
+        "topic_pattern": "senseBox:home/Naunhof_Nr5", 
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6436f6df5a16e3000837eff4",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/34984248-0db5-4daa-9e6c-6484d4747ec/station-naunhof-nr-5"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Naunhof_Nr6",
+        "name": "Station Naunhof Nr 6",
+        "topic_pattern": "senseBox:home/Naunhof_Nr6",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6436f7565a16e300083836e0",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/fe897df6-ce6a-4b2d-a6dc-caa1798a11c4/station-naunhof-nummer-6"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Naunhof_Nr7",
+        "name": "Station Naunhof Nr 7",
+        "topic_pattern": "senseBox:home/Naunhof_Nr7",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/67365b6ea5dfb40007c36114",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/34984248-0db5-4daa-9e6c-64840047472c/station-naunhof-nr-7"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Pomssen_Nr1",
+        "name": "Station Pomßen Nr 1",
+        "topic_pattern": "senseBox:home/Pomssen_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/66fd98061ccdcf00076c44ea",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/d0c72050-0s5b-44f67fb2-04a9213329b3/station-pomssen-nr-1"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Threna_Nr1",
+        "name": "Station Threna Nr 1",
+        "topic_pattern": "senseBox:home/Threna_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/64ac15ea32ec2e0008b6e8e6",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/f3b8d21e-f2c2-4762-a486-f3b3d8a4c93f/station-threna"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Threna_Nr2",
+        "name": "Station Threna Nr 2",
+        "topic_pattern": "senseBox:home/Threna_Nr2",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/6565e17e2d58f70008e505c9",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/d0c72050-0d5b-44f6-9fb2-04a781339b49/station-threna-nr-2"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "Lautstaerke_Max",
+          "PM10",
+          "PM10_Max",
+          "PM2.5",
+          "PM25_Max",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Waldsteinberg_Nr1",
+        "name": "Station Waldsteinberg Nr 1",
+        "topic_pattern": "senseBox:home/Waldsteinberg_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/629510bf361e06001c8b86de",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/Lf-l6prnz/station-waldsteinberg-nummer-1?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Wolfshain_Nr1",
+        "name": "Station Wolfshain Nr 1",
+        "topic_pattern": "senseBox:home/Wolfshain_Nr1",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/63e61d6190a19a0007b430a4",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/Lf-l6prnz/station-wolfshain-nummer-1?orgId=3"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Zweenfurth_Nr1",
+        "name": "Station Zweenfurth Nr 1",
+        "topic_pattern": "senseBox:home/Zweenfurth_Nr1",  
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/64b146985b5e1f00088ee7bb",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/fc44c341-ed93-4259-82ff-9bedcdcd6902/station-zweenfurth-nummer-1"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "GehaeuseTemp",
+          "UV-Intensitaet"
+        ]
+      },
+      {
+        "id": "Zweenfurth_Nr2",
+        "name": "Station Zweenfurth Nr 2",
+        "topic_pattern": "senseBox:home/Zweenfurth_Nr2",
+        "external_urls": {
+          "openSenseMap": "https://opensensemap.org/explore/64ae79b6af524500073ede7e",
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/af191f05-16a8-4e6d-b088-c1f19da9455d/station-zweenfurth-nummer-2"
+        },
+        "sensors": [
+          "Luftfeuchte",
+          "Beleuchtungsstaerke",
+          "Lautstaerke",
+          "PM10",
+          "PM2.5",
+          "Luftdruck",
+          "Temperatur",
+          "UV-Intensitaet"
+        ]
+      }
+    ],
+    "Temperature": [
+      {
+        "id": "LSN50_001_Kirchbruch_Beucha",
+        "name": "Temperatur Kirchbruch Beucha",
+        "topic_pattern": "sensoren/LSN50_001_Kirchbruch_Beucha",
+        "external_urls": {
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/adxwqjfpmxtz4d/sensor-kirchbruch-beucha"
+        },
+        "sensors": [
+          "TempC1",
+          "TempC2"
+        ]
+      },
+      {
+        "id": "LSN50_002_Stoermthaler_See",
+        "name": "Temperatur Störmthaler See",
+        "topic_pattern": "sensoren/LSN50_002_Stoermthaler_See",
+        "external_urls": {
+          "makerspace": "https://sensoren.makerspace-partheland.de/d/adxwqjfpmxtz4f/sensor-stormthaler-see"
+        },
+        "sensors": [
+          "WasserTemp_1",
+          "WasserTemp_2"
+        ]
+      }
+    ],
+    "WaterLevel": [
+      {
+        "id": "LDDS75_Albrechtshainer_See",
+        "name": "Wasserstand Albrechtshainer See",
+        "topic_pattern": "sensoren/LDDS75_Albrechtshainer_See",
+        "sensors": [
+          "water_level",
+          "water_temp"
+        ]
+      },
+      {
+        "id": "LDDS75_Grosspoesna_1",
+        "name": "Wasserstand Pösgraben 1",
+        "topic_pattern": "sensoren/LDDS75_Grosspoesna_1",
+        "sensors": [
+          "water_level"
+        ]
+      },
+      {
+        "id": "LDDS75_Grosspoesna_2",
+        "name": "Wasserstand Pösgraben 1",
+        "topic_pattern": "sensoren/LDDS75_Grosspoesna_2",
+        "sensors": [
+          "water_level"
+        ]
+      },
+      {
+        "id": "LDDS75_Naunhof_1",
+        "name": "Wasserstand Parthe Naunhof 1",
+        "topic_pattern": "sensoren/LDDS75_Naunhof_1",
+        "sensors": [
+          "water_level"
+        ]
+      },
+      {
+        "id": "LDDS75_Naunhof_2",
+        "name": "Wasserstand Parthe Naunhof 2",
+        "topic_pattern": "sensoren/LDDS75_Naunhof_2",
+        "sensors": [
+          "water_level"
+        ]
+      }
+    ],
+  "MedianEntities": [
+  {
+    "id": "median_Partheland",
+    "name": "Median Partheland",
+    "topic_pattern": "senseBox:home/median/Partheland",
+    "location": "Partheland",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Ammelshain",
+    "name": "Median Ammelshain",
+    "topic_pattern": "senseBox:home/median/Ammelshain",
+    "location": "Ammelshain",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Belgershain",
+    "name": "Median Belgershain",
+    "topic_pattern": "senseBox:home/median/Belgershain",
+    "location": "Belgershain",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Beucha",
+    "name": "Median Beucha",
+    "topic_pattern": "senseBox:home/median/Beucha",
+    "location": "Beucha",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Brandis",
+    "name": "Median Brandis",
+    "topic_pattern": "senseBox:home/median/Brandis",
+    "location": "Brandis",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Dreiskau-Muckern",
+    "name": "Median Dreiskau-Muckern",
+    "topic_pattern": "senseBox:home/median/Dreiskau-Muckern",
+    "location": "Dreiskau-Muckern",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Grosspoesna",
+    "name": "Median Grosspoesna",
+    "topic_pattern": "senseBox:home/median/Grosspoesna",
+    "location": "Grosspoesna",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Grosssteinberg",
+    "name": "Median Grosssteinberg",
+    "topic_pattern": "senseBox:home/median/Grosssteinberg",
+    "location": "Grosssteinberg",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Klinga",
+    "name": "Median Klinga",
+    "topic_pattern": "senseBox:home/median/Klinga",
+    "location": "Klinga",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Naunhof",
+    "name": "Median Naunhof",
+    "topic_pattern": "senseBox:home/median/Naunhof",
+    "location": "Naunhof",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Pomssen",
+    "name": "Median Pomssen",
+    "topic_pattern": "senseBox:home/median/Pomssen",
+    "location": "Pomssen",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Threna",
+    "name": "Median Threna",
+    "topic_pattern": "senseBox:home/median/Threna",
+    "location": "Threna",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Zweenfurth",
+    "name": "Median Zweenfurth",
+    "topic_pattern": "senseBox:home/median/Zweenfurth",
+    "location": "Zweenfurth",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Lindhardt",
+    "name": "Median Lindhardt",
+    "topic_pattern": "senseBox:home/median/Lindhardt",
+    "location": "Lindhardt",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  },
+  {
+    "id": "median_Partheland",
+    "name": "Median Partheland",
+    "topic_pattern": "senseBox:home/median/Partheland",
+    "location": "Partheland",
+    "sensors": ["Beleuchtungsstaerke", "Lautstaerke", "Luftdruck", "Luftfeuchte", "PM10", "PM2.5", "Temperatur"]
+  }
+]
+  },
+  "processing": {
+    "dynamic_field_detection": true,
+    "parse_only_fields_object": true,
+    "create_entities_per_field": true,
+    "filter_by_sensor_categories": true,
+    "ignore_rssi_only_messages": true
+  }
+} 

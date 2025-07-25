@@ -1,0 +1,20 @@
+{
+  "domain": "sensorbridge_partheland",
+  "name": "SmartCity SensorBridge Partheland",
+  "version": "0.1.0",
+  "documentation": "https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland",
+  "issue_tracker": "https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/issues",
+  "requirements": [
+    "paho-mqtt>=2.1.0",
+    "aiohttp>=3.8.0",
+    "aiofiles>=23.0.0"
+  ],
+  "dependencies": [],
+  "codeowners": ["@makerspace-partheland"],
+  "config_flow": true,
+  "iot_class": "cloud_push",
+  "integration_type": "hub",
+  "icon": "mdi:sensor-on",
+  "homeassistant": "2025.7.0",
+  "import_executor": true
+} 

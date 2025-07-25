@@ -1,0 +1,35 @@
+{
+  "config": {
+    "title": "SmartCity SensorBridge Partheland",
+    "step": {
+      "user": {
+        "title": "SmartCity SensorBridge",
+        "description": "Verbinde dich mit dem SmartCity Partheland Sensornetzwerk.\n\nDie Integration erkennt verfügbare Sensoren automatisch."
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum MQTT-Broker fehlgeschlagen",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "abort": {
+      "already_configured": "Integration ist bereits konfiguriert"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "Temperatur": {
+        "name": "TEMPERATUR-SENSOR-DEBUG"
+      },
+      "Beleuchtungsstaerke": {
+        "name": "BELEUCHTUNGSSTAERKE-DEBUG-MARKANT"
+      },
+      "Luftfeuchte": {
+        "name": "LUFTFEUCHTE-DEBUG-TEST"
+      }
+    }
+  },
+  "state": {
+    "connected": "Verbunden",
+    "disconnected": "Getrennt"
+  }
+} 

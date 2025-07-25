@@ -1,0 +1,8 @@
+# Production requirements for SmartCity SensorBridge Partheland
+# Based on Home Assistant integration standards
+
+# MQTT client library
+paho-mqtt>=2.1.0
+
+# Async file I/O
+aiofiles>=23.0.0

@@ -1,0 +1,76 @@
+name: "SmartCity SensorBridge Partheland Security Configuration"
+
+# CodeQL-Konfiguration für automatische Sicherheitsanalyse
+# Überwacht Python-Code auf bekannte Sicherheitslücken
+
+queries:
+  # Standard-Sicherheitsabfragen für Python
+  - uses: security-and-quality
+  - uses: security-extended
+  
+  # Zusätzliche Python-spezifische Abfragen
+  - uses: python-security-and-quality.qls
+  
+  # Custom-Abfragen für Home Assistant Integration
+  - name: "MQTT Security Checks"
+    description: "Prüft auf MQTT-spezifische Sicherheitsprobleme"
+    query: |
+      import python
+      
+      from MqttClientCall mqtt_call
+      where mqtt_call.getFunc().getDisplayName() = "connect"
+      and not exists(mqtt_call.getAnArg().getAValue().getStringValue())
+      select mqtt_call, "MQTT-Verbindung ohne explizite Sicherheitskonfiguration"
+      
+  - name: "HTTP Security Checks"
+    description: "Prüft auf HTTP-spezifische Sicherheitsprobleme"
+    query: |
+      import python
+      
+      from HttpRequestCall http_call
+      where not exists(http_call.getAnArg().getAValue().getStringValue())
+      select http_call, "HTTP-Request ohne explizite Sicherheitskonfiguration"
+      
+  - name: "File Operation Security"
+    description: "Prüft auf unsichere Dateioperationen"
+    query: |
+      import python
+      
+      from FileOperation file_op
+      where file_op.getDisplayName().matches("%open%")
+      and not exists(file_op.getAnArg().getAValue().getStringValue())
+      select file_op, "Dateioperation ohne explizite Sicherheitskonfiguration"
+
+paths:
+  # Inkludiere Python-Code
+  - include: "custom_components/sensorbridge_partheland/**/*.py"
+  - include: "tests/**/*.py"
+  - include: ".github/scripts/**/*.py"
+  
+  # Exkludiere generierte Dateien
+  - exclude: "**/__pycache__/**"
+  - exclude: "**/*.pyc"
+  - exclude: "**/.pytest_cache/**"
+  - exclude: "**/build/**"
+  - exclude: "**/dist/**"
+
+paths-ignore:
+  # Ignoriere Dokumentation und Konfigurationsdateien
+  - "docs/**"
+  - "*.md"
+  - "*.yml"
+  - "*.yaml"
+  - "*.json"
+  - "*.toml"
+
+# Spezifische Konfiguration für Python
+python:
+  # Python-Version für Analyse
+  version: "3.11"
+  
+  # Zusätzliche Python-Pakete für Analyse
+  packages:
+    - "paho-mqtt"
+    - "aiohttp"
+    - "aiofiles"
+    - "homeassistant" 

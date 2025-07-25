@@ -1,0 +1,147 @@
+{
+  "config": {
+    "title": "SmartCity SensorBridge Partheland",
+    "step": {
+      "user": {
+        "title": "SmartCity SensorBridge",
+        "description": "Connect to the SmartCity Partheland sensor network.\n\nThe integration will automatically discover available sensors."
+      },
+      "device_selection": {
+        "title": "Device Configuration", 
+        "description": "Select your desired devices.\n\n**Individual devices**: Direct data from individual measurement stations\n**Median**: Failover safety through median values from multiple devices per location (choose Partheland for maximum safety)",
+        "data": {
+          "selected_devices": "Select individual devices",
+          "selected_median_entities": "Select median entities"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to MQTT broker",
+      "unknown": "Unexpected error",
+      "mindestens_eine_auswahl": "Please select at least one device or median",
+      "validierungsfehler": "Configuration validation error"
+    },
+    "abort": {
+      "already_configured": "Integration is already configured",
+      "no_devices_available": "No devices available in configuration",
+      "single_instance_allowed": "Only one instance of the integration allowed. Use 'Configure' to add more devices."
+    },
+    "ui_text": {
+      "sensors": "Sensors",
+      "sensor_count": "Sensors"
+    },
+    "error_messages": {
+      "mqtt_connection": "Connection to MQTT server failed",
+      "config_validation": "Configuration file is invalid",
+      "message_parsing": "Error processing sensor data",
+      "entity_creation": "Error creating sensors",
+      "sensor_bridge": "An error occurred",
+      "unknown_error": "An unexpected error occurred",
+      "error_handling": "Error in error handling"
+    }
+  },
+  "options": {
+    "step": {
+      "device_selection": {
+        "title": "Adjust Device Configuration",
+        "description": "Manage your device selection. Already configured devices are pre-selected.",
+        "data": {
+          "selected_devices": "Select individual devices", 
+          "selected_median_entities": "Select median entities"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Error loading configuration",
+      "mindestens_eine_auswahl": "Please select at least one device or median",
+      "validierungsfehler": "Error validating selection"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "Beleuchtungsstaerke": {
+        "name": "Illuminance"
+      },
+      "Lautstaerke": {
+        "name": "Sound Level"
+      },
+      "Lautstaerke_Max": {
+        "name": "Sound Level Max"
+      },
+      "UV-Intensitaet": {
+        "name": "UV Intensity"
+      },
+      "GehaeuseTemp": {
+        "name": "Case Temperature"
+      },
+      "PM10_Max": {
+        "name": "PM 10 Max"
+      },
+      "PM25_Max": {
+        "name": "PM 2.5 Max"
+      },
+      "PM10": {
+        "name": "PM 10"
+      },
+      "PM2.5": {
+        "name": "PM 2.5"
+      },
+      "PM25": {
+        "name": "PM 2.5"
+      },
+      "Temperatur": {
+        "name": "Temperature"
+      },
+      "LuftTemp": {
+        "name": "Air Temperature"
+      },
+      "WasserTemp": {
+        "name": "Water Temperature"
+      },
+      "TempC_SHT": {
+        "name": "Temperature"
+      },
+      "TempC_DS": {
+        "name": "Temperature"
+      },
+      "WasserTemp_1": {
+        "name": "Water Temperature 1"
+      },
+      "WasserTemp_2": {
+        "name": "Water Temperature 2"
+      },
+      "water_level": {
+        "name": "Water Level"
+      },
+      "water_temp": {
+        "name": "Water Temperature"
+      },
+      "TempC1": {
+        "name": "Temperature 1"
+      },
+      "TempC2": {
+        "name": "Temperature 2"
+      },
+      "Luftfeuchte": {
+        "name": "Humidity"
+      },
+      "Luftdruck": {
+        "name": "Air Pressure"
+      }
+    },
+    "device_categories": {
+      "senseBox": "senseBox:home",
+      "Temperature": "Temperature Sensor",
+      "WaterLevel": "Water Sensor",
+      "MedianEntities": "senseBox:home Median",
+      "Unknown": "Unknown Device"
+    }
+  },
+  "state": {
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "connecting": "Connecting...",
+    "error": "Error",
+    "unavailable": "Unavailable"
+  }
+} 
