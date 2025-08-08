@@ -80,14 +80,23 @@ class ConfigService(ConfigServiceProtocol):
     
     async def get_median_entities(self) -> List[Dict[str, Any]]:
         """Gibt alle Median-Entities zurück."""
-        devices = await self.get_devices()
-        median_entities = devices.get("MedianEntities", [])
-        
-        # Device-Type hinzufügen
-        for entity in median_entities:
-            entity["type"] = "median"
-        
-        return median_entities
+        config = await self.load_config()
+        nested = config.get("known_devices", {}).get("MedianEntities", [])
+
+        entities_with_type: List[Dict[str, Any]] = []
+        median_ids: List[str] = []
+        if isinstance(nested, list):
+            for item in nested:
+                if not isinstance(item, dict):
+                    continue
+                copy_item = dict(item)
+                copy_item["type"] = "median"
+                entities_with_type.append(copy_item)
+                if "id" in copy_item:
+                    median_ids.append(copy_item["id"])
+
+        _LOGGER.debug("MedianEntities geladen (known_devices): %s", median_ids)
+        return entities_with_type
     
     async def get_sensor_categories(self) -> Dict[str, List[str]]:
         """Gibt die Sensor-Kategorien zurück."""
@@ -143,16 +152,24 @@ class ConfigService(ConfigServiceProtocol):
     async def get_device_by_id(self, device_id: str) -> Optional[Dict[str, Any]]:
         """Gibt ein spezifisches Gerät nach ID zurück."""
         devices = await self.get_devices()
-        
-        # Durch alle Gerätetypen iterieren
+
+        # 1) Direkter Match in bekannten Geräten (inkl. Kategorien)
         for device_type, device_list in devices.items():
             if isinstance(device_list, list):
                 for device in device_list:
                     if device.get("id") == device_id:
-                        # Device-Type hinzufügen
                         device["type"] = device_type
                         return device
-        
+
+        # 2) Median-Entities: device_id entspricht Location oder ID (Top-Level Only)
+        for median in await self.get_median_entities():
+            if median.get("id") == device_id or median.get("location") == device_id:
+                return {
+                    "id": device_id,
+                    "name": median.get("name", device_id),
+                    "type": "median",
+                }
+
         return None
     
     async def get_median_by_id(self, median_id: str) -> Optional[Dict[str, Any]]:
@@ -173,25 +190,19 @@ class ConfigService(ConfigServiceProtocol):
     async def get_sensor_names(self) -> Dict[str, str]:
         """Gibt die Sensor-Namen-Übersetzungen zurück."""
         try:
-            # Verwende die moderne Home Assistant 2025 API für Übersetzungen
-            from homeassistant.helpers.translation import async_get_translations
-            
-            # Sensor-Namen aus den Übersetzungsdateien laden
-            translations = await async_get_translations(
-                self.hass, 
-                self.hass.config.language, 
-                "entity", 
-                [DOMAIN]
-            )
-            
-            # Sensor-Namen aus den Übersetzungen extrahieren
-            sensor_names = translations.get("sensor_names", {})
-            
+            # Nutze den TranslationHelper, um Übersetzungen zu laden
+            from .translation_helper import TranslationHelper
+
+            translation_helper = TranslationHelper(self.hass)
+            sensor_names = await translation_helper.get_sensor_names()
+
             _LOGGER.debug("Sensor-Namen geladen: %s", sensor_names)
             return sensor_names
-            
+
         except Exception as e:
-            _LOGGER.warning("Fehler beim Laden der Sensor-Namen-Übersetzungen: %s", e)
+            _LOGGER.warning(
+                "Fehler beim Laden der Sensor-Namen-Übersetzungen: %s", e
+            )
             return {}
     
     async def get_device_categories(self) -> Dict[str, str]:

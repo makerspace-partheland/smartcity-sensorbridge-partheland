@@ -29,17 +29,26 @@ class TranslationHelper:
             translations = await async_get_translations(
                 self.hass, self.hass.config.language, "entity", [DOMAIN]
             )
-            
-            # Korrekte HA 2025 Struktur: entity.sensor.{sensor_name}.name
-            entity_translations = translations.get("entity", {})
-            sensor_translations = entity_translations.get("sensor", {})
-            sensor_names = {}
-            
-            for sensor_key, sensor_data in sensor_translations.items():
-                if isinstance(sensor_data, dict) and "name" in sensor_data:
-                    sensor_names[sensor_key] = sensor_data["name"]
-            
-            _LOGGER.debug("Sensor-Namen aus HA 2025 Übersetzungen geladen: %s", sensor_names)
+
+            sensor_names: Dict[str, str] = {}
+
+            # HA kann verschachtelte oder flache Schlüssel liefern
+            entity_translations = translations.get("entity")
+            if isinstance(entity_translations, dict):
+                sensor_translations = entity_translations.get("sensor", {})
+                for sensor_key, sensor_data in sensor_translations.items():
+                    if isinstance(sensor_data, dict) and "name" in sensor_data:
+                        sensor_names[sensor_key] = sensor_data["name"]
+            else:
+                for key, value in translations.items():
+                    if "entity.sensor." in key and key.endswith(".name"):
+                        key_part = key.split("entity.sensor.", 1)[1]
+                        sensor_key = key_part.rsplit(".name", 1)[0]
+                        sensor_names[sensor_key] = value
+
+            _LOGGER.debug(
+                "Sensor-Namen aus HA 2025 Übersetzungen geladen: %s", sensor_names
+            )
             return sensor_names
             
         except Exception as e:

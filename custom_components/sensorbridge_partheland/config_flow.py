@@ -177,7 +177,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     @staticmethod
-    async def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> OptionsFlowHandler:
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> OptionsFlowHandler:
         """Get the options flow for this handler."""
         return OptionsFlowHandler(config_entry)
 
@@ -236,6 +236,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
         self.hass.config_entries.async_update_entry(
             self.config_entry, data=new_data
+        )
+
+        # Integration neu laden, damit die geänderte Gerätauswahl sofort
+        # angewendet wird und neue Entities/Devices angelegt werden
+        self.hass.async_create_task(
+            self.hass.config_entries.async_reload(self.config_entry.entry_id)
         )
 
         return self.async_create_entry(title="", data={})

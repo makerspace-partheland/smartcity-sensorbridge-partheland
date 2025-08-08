@@ -1,6 +1,4 @@
 {
   "name": "SmartCity SensorBridge Partheland",
-  "render_readme": true,
-  "homeassistant": "2024.4.1",
-  "country": "DE"
-} 
+  "render_readme": true
+}

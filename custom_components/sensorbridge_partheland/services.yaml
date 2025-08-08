@@ -1,0 +1,11 @@
+debug_translations:
+  name: "Übersetzungen debuggen"
+  description: "Schreibt Debug-Informationen zu Übersetzungen in das Log."
+
+test_translations:
+  name: "Übersetzungen testen"
+  description: "Führt einen Testlauf für Übersetzungen aus."
+
+debug_translation_file:
+  name: "Übersetzungsdatei debuggen"
+  description: "Protokolliert den Inhalt der Übersetzungsdatei."

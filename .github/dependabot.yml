@@ -1,3 +1,20 @@
+version: 2
+updates:
+  # Halte GitHub Actions aktuell (Versions-Bumps via Dependabot)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+      time: "05:00" # Europe/Berlin
+      timezone: "Europe/Berlin"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
 # Dependabot-Konfiguration für SmartCity SensorBridge Partheland
 # Automatische Updates für Dependencies und GitHub Actions
 

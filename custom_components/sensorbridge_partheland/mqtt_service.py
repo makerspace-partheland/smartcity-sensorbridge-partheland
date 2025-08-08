@@ -398,8 +398,10 @@ class MQTTService(MQTTServiceProtocol):
     
     def _stop_event_processor(self) -> None:
         """Stoppt den Event-Processor."""
-        if self._event_processor_task and not self._event_processor_task.done():
-            self._event_processor_task.cancel()
+        if self._event_processor_task:
+            if not self._event_processor_task.done():
+                self._event_processor_task.cancel()
+            self._event_processor_task = None
             _LOGGER.debug("Event-Processor beendet")
     
     async def _process_events(self) -> None:

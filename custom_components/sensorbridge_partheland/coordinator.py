@@ -121,19 +121,13 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
                 entity_id = entity["entity_id"]
                 self._entities[entity_id] = entity
             
-            # Event auslösen (ohne DeviceEntry-Objekte)
-            event_data = {
-                "device_id": device_id,
-                "sensor_data": sensor_data,
-                "entity_count": len(entities)
-            }
-            
-            # DeviceEntry-Objekte aus Event-Daten entfernen
-            sanitized_event_data = self._sanitize_event_data(event_data)
-            
+            # Event auslösen – KEINE Home Assistant internen Objekte anhängen
             self.hass.bus.async_fire(
                 EVENT_SENSOR_DATA_RECEIVED,
-                sanitized_event_data
+                {
+                    "device_id": device_id,
+                    "entity_count": len(entities),
+                },
             )
             
             # Coordinator-Daten aktualisieren
@@ -142,21 +136,7 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         except Exception as e:
             await self.error_handler.handle_error(e, f"Update Sensor Data for {device_id}")
     
-    def _sanitize_event_data(self, data: Any) -> Any:
-        """Entfernt nicht-serialisierbare Objekte aus Event-Daten."""
-        if isinstance(data, dict):
-            sanitized = {}
-            for key, value in data.items():
-                # DeviceEntry-Objekte überspringen
-                if hasattr(value, '__class__') and 'DeviceEntry' in str(value.__class__):
-                    sanitized[key] = f"DeviceEntry({key})"
-                else:
-                    sanitized[key] = self._sanitize_event_data(value)
-            return sanitized
-        elif isinstance(data, list):
-            return [self._sanitize_event_data(item) for item in data]
-        else:
-            return data
+    
     
     @property
     def data(self) -> Dict[str, Any]:
@@ -212,21 +192,27 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             
             # Topics für Median-Entities
             for entity_id in self.selected_median_entities:
-                # Median-Entity Info laden
+                # Median-Entity Info laden (inkl. Fallback-Suchorte)
                 median_entities = await self.config_service.get_median_entities()
-                median_info = next((entity for entity in median_entities if entity["id"] == entity_id), None)
-                
+                median_info = next(
+                    (entity for entity in median_entities if entity.get("id") == entity_id),
+                    None,
+                )
+
                 if median_info:
                     topic_pattern = median_info.get("topic_pattern")
                     if topic_pattern:
-                        # Topic-Pattern enthält bereits die Entity-ID
                         topic = topic_pattern
                         self._mqtt_topics.append(topic)
                         _LOGGER.debug("Median Topic für %s: %s", entity_id, topic)
                     else:
-                        _LOGGER.warning("Kein topic_pattern für Median-Entity %s gefunden", entity_id)
+                        _LOGGER.warning(
+                            "Kein topic_pattern für Median-Entity %s gefunden", entity_id
+                        )
                 else:
-                    _LOGGER.warning("Median-Entity %s nicht in der Konfiguration gefunden", entity_id)
+                    _LOGGER.warning(
+                        "Median-Entity %s nicht in der Konfiguration gefunden", entity_id
+                    )
             
             _LOGGER.debug("MQTT-Topics eingerichtet: %s", self._mqtt_topics)
             
@@ -280,7 +266,11 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             # Message parsen
             parsed_data = await self.parser_service.parse_message(topic, payload)
             if not parsed_data:
-                _LOGGER.warning("Konnte MQTT-Nachricht nicht parsen: %s", topic)
+                # Keine relevanten Daten zurückgeliefert (z. B. RSSI-Only/Meta oder nicht konfigurierte Felder)
+                _LOGGER.debug(
+                    "Parser lieferte keine verarbeitbaren Daten für Topic %s (Nachricht ggf. ignoriert)",
+                    topic,
+                )
                 return
             
             _LOGGER.debug("MQTT-Nachricht erfolgreich geparst: %s", parsed_data)

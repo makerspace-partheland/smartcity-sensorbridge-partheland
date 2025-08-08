@@ -5,27 +5,81 @@
       "user": {
         "title": "SmartCity SensorBridge",
         "description": "Verbinde dich mit dem SmartCity Partheland Sensornetzwerk.\n\nDie Integration erkennt verfügbare Sensoren automatisch."
+      },
+      "device_selection": {
+        "title": "Gerätekonfiguration",
+        "description": "Wähle die gewünschten Geräte aus.\n\n**Einzelgeräte**: Direkte Daten von einzelnen Messstationen\n**Median**: Ausfallsichere Mittelwerte aus mehreren Geräten pro Ort (wähle Partheland für maximale Sicherheit)",
+        "data": {
+          "selected_devices": "Einzelne Geräte auswählen",
+          "selected_median_entities": "Median-Entities auswählen"
+        }
       }
     },
     "error": {
       "cannot_connect": "Verbindung zum MQTT-Broker fehlgeschlagen",
-      "unknown": "Unerwarteter Fehler"
+      "unknown": "Unerwarteter Fehler",
+      "mindestens_eine_auswahl": "Bitte wähle mindestens ein Gerät oder einen Median",
+      "validierungsfehler": "Fehler bei der Konfigurationsvalidierung"
     },
     "abort": {
-      "already_configured": "Integration ist bereits konfiguriert"
+      "already_configured": "Integration ist bereits konfiguriert",
+      "no_devices_available": "Keine Geräte in der Konfiguration verfügbar",
+      "single_instance_allowed": "Es ist nur eine Instanz der Integration erlaubt. Nutze 'Konfigurieren', um weitere Geräte hinzuzufügen."
+    },
+    "ui_text": {
+      "sensors": "Sensoren",
+      "sensor_count": "Sensoren"
+    }
+  },
+  "options": {
+    "step": {
+      "device_selection": {
+        "title": "Gerätekonfiguration anpassen",
+        "description": "Verwalte deine Gerätauswahl. Bereits konfigurierte Geräte sind vorausgewählt.",
+        "data": {
+          "selected_devices": "Einzelne Geräte auswählen",
+          "selected_median_entities": "Median-Entities auswählen"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Fehler beim Laden der Konfiguration",
+      "mindestens_eine_auswahl": "Bitte wähle mindestens ein Gerät oder einen Median",
+      "validierungsfehler": "Fehler bei der Validierung der Auswahl"
     }
   },
   "entity": {
     "sensor": {
-      "Temperatur": {
-        "name": "TEMPERATUR-SENSOR-DEBUG"
-      },
-      "Beleuchtungsstaerke": {
-        "name": "BELEUCHTUNGSSTAERKE-DEBUG-MARKANT"
-      },
-      "Luftfeuchte": {
-        "name": "LUFTFEUCHTE-DEBUG-TEST"
-      }
+      "Beleuchtungsstaerke": {"name": "Beleuchtungsst\u00e4rke"},
+      "Lautstaerke": {"name": "Lautst\u00e4rke"},
+      "Lautstaerke_Max": {"name": "Maximale Lautst\u00e4rke"},
+      "UV-Intensitaet": {"name": "UV-Intensit\u00e4t"},
+      "GehaeuseTemp": {"name": "Geh\u00e4usetemperatur"},
+      "PM10_Max": {"name": "PM10 Max"},
+      "PM25_Max": {"name": "PM2.5 Max"},
+      "PM10": {"name": "PM10"},
+      "PM2.5": {"name": "PM2.5"},
+      "PM25": {"name": "PM2.5"},
+      "Temperatur": {"name": "Temperatur"},
+      "LuftTemp": {"name": "Lufttemperatur"},
+      "WasserTemp": {"name": "Wassertemperatur"},
+      "TempC_SHT": {"name": "Temperatur"},
+      "TempC_DS": {"name": "Temperatur"},
+      "WasserTemp_1": {"name": "Wassertemperatur 1"},
+      "WasserTemp_2": {"name": "Wassertemperatur 2"},
+      "water_level": {"name": "Wasserstand"},
+      "water_temp": {"name": "Wassertemperatur"},
+      "TempC1": {"name": "Temperatur 1"},
+      "TempC2": {"name": "Temperatur 2"},
+      "Luftfeuchte": {"name": "Luftfeuchte"},
+      "Luftdruck": {"name": "Luftdruck"}
+    },
+    "device_categories": {
+      "senseBox": "senseBox:home",
+      "Temperature": "Temperatursensor",
+      "WaterLevel": "Wassersensor",
+      "MedianEntities": "senseBox:home Median",
+      "Unknown": "Unbekanntes Ger\u00e4t"
     }
   },
   "state": {

@@ -9,6 +9,7 @@ from homeassistant.const import Platform
 # Integration Details
 DOMAIN: Final[str] = "sensorbridge_partheland"
 NAME: Final[str] = "SmartCity SensorBridge Partheland"
+MANUFACTURER: Final[str] = "Makerspace Partheland e.V."
 VERSION: Final[str] = "0.1.0"
 
 # Platforms
@@ -24,7 +25,7 @@ CONF_SELECTED_MEDIAN_ENTITIES: Final[str] = "selected_median_entities"
 CONF_SENSOR_STATIONS: Final[str] = "sensor_stations"
 
 # Default Values
-DEFAULT_SCAN_INTERVAL: Final[int] = 30  # Health Check Intervall (MQTT ist Push-basiert)
+DEFAULT_SCAN_INTERVAL: Final[int] = 30  # Health check interval for MQTT
 DEFAULT_TIMEOUT: Final[int] = 10  # Sekunden
 
 # Service Names
@@ -49,4 +50,4 @@ ERROR_NO_SELECTION: Final[str] = "mindestens_eine_auswahl"
 # Abort Messages
 ABORT_ALREADY_CONFIGURED: Final[str] = "already_configured"
 ABORT_NO_DEVICES: Final[str] = "no_devices_available"
-ABORT_SINGLE_INSTANCE: Final[str] = "single_instance_allowed" 
+ABORT_SINGLE_INSTANCE: Final[str] = "single_instance_allowed"

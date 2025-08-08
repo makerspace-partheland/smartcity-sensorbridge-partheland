@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from homeassistant.core import HomeAssistant
+from homeassistant.util import slugify
 
 from .interfaces import EntityFactoryProtocol, ConfigServiceProtocol
 
@@ -128,10 +129,9 @@ class EntityFactory(EntityFactoryProtocol):
     
     def _generate_entity_id(self, device_id: str, sensor_name: str) -> str:
         """Generiert eine Entity-ID."""
-        # Entity-ID Format: sensor.{device_id}_{sensor_name}
-        clean_device_id = device_id.replace(":", "_").replace("-", "_").lower()
-        clean_sensor_name = sensor_name.replace(" ", "_").lower()
-        
+        clean_device_id = slugify(device_id)
+        clean_sensor_name = slugify(sensor_name)
+
         return f"sensor.{clean_device_id}_{clean_sensor_name}"
     
     async def _get_sensor_icon(self, sensor_name: str, device_class: Optional[str]) -> str:

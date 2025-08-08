@@ -131,16 +131,27 @@ class ParserService(ParserServiceProtocol):
             device_id = self._extract_device_id_from_topic(topic)
             if not device_id:
                 return None
-            
+
             # Median-Erkennung
-            median_detection = self._parsing_config.get("sensebox", {}).get("median_detection", {})
+            median_detection = self._parsing_config.get("sensebox", {}).get(
+                "median_detection", {}
+            )
             is_median = self._is_median_topic(topic, median_detection)
-            
+
+            # Bei Median-Topics wird als "device_id" der Standortname extrahiert
+            # (z. B. senseBox:home/median/Naunhof -> "Naunhof"). Für die
+            # interne Zuordnung und Entity-Matches mappen wir auf die
+            # konfigurierte Median-ID (z. B. "median_Naunhof"), sofern vorhanden.
+            if is_median:
+                device_id = await self._map_median_location_to_id(device_id)
+
             # Fields-Pfad bestimmen - für Median-Topics direkt im Root-Level
             if is_median:
                 fields = data  # Median-Topics haben keine fields-Struktur
             else:
-                fields_path = self._parsing_config.get("sensebox", {}).get("data_path", "fields")
+                fields_path = self._parsing_config.get("sensebox", {}).get(
+                    "data_path", "fields"
+                )
                 fields = data.get(fields_path, {})
             
             if not fields:
@@ -148,7 +159,9 @@ class ParserService(ParserServiceProtocol):
                 return None
             
             # Konfigurierte Sensoren für dieses Gerät laden
-            configured_sensors = await self._get_configured_sensors_for_device(device_id, is_median)
+            configured_sensors = await self._get_configured_sensors_for_device(
+                device_id, is_median, device_type="sensebox"
+            )
             if not configured_sensors:
                 return None
             
@@ -156,10 +169,9 @@ class ParserService(ParserServiceProtocol):
             sensor_data = {}
             for field_name, field_value in fields.items():
                 if isinstance(field_value, (int, float)) and field_name in configured_sensors:
-                    # Median-Suffix hinzufügen
-                    if is_median:
-                        field_name = f"{field_name}_{median_detection.get('suffix', '_median')}"
-                    
+                    # Für Median-Topics KEIN Suffix anhängen. Die Entities
+                    # werden für die gleichen Feldnamen erzeugt wie bei
+                    # Einzelgeräten, nur unter der Median-Geräte-ID.
                     sensor_data[field_name] = field_value
             
             if not sensor_data:
@@ -177,29 +189,86 @@ class ParserService(ParserServiceProtocol):
             _LOGGER.error("Fehler beim Parsen der senseBox-Nachricht: %s", e)
             return None
     
-    async def _get_configured_sensors_for_device(self, device_id: str, is_median: bool) -> Optional[list[str]]:
-        """Lädt die konfigurierten Sensoren für ein Gerät."""
+    async def _get_configured_sensors_for_device(self, device_id: str, is_median: bool, device_type: Optional[str] = None) -> Optional[list[str]]:
+        """Lädt die konfigurierten Sensoren für ein Gerät.
+
+        device_id: Bei normalen Topics ist das die Geräte-ID aus dem Topic.
+                   Bei Median-Topics ist das der Standort-Name (z. B. "Brandis").
+
+        device_type: Erwartete Werte "sensebox" oder "specialized"; None für auto.
+        """
         try:
             # Konfiguration laden
             config = await self.config_service.load_config()
-            
+
             if is_median:
-                # Für Median-Entities
-                median_entities = config.get("MedianEntities", [])
+                # Median-Entities über den ConfigService beziehen (HA 2025 konforme Struktur)
+                median_entities = await self.config_service.get_median_entities()
+
+                # Unterstütze sowohl Standortnamen (z. B. "Naunhof") als auch
+                # Median-IDs (z. B. "median_Naunhof").
                 for median_entity in median_entities:
-                    if median_entity.get("id") == device_id:
+                    if not isinstance(median_entity, dict):
+                        continue
+                    location = median_entity.get("location")
+                    topic_pattern = median_entity.get("topic_pattern", "")
+                    median_id = median_entity.get("id")
+
+                    # Direkter ID-Match
+                    if median_id == device_id:
                         return median_entity.get("sensors", [])
-            else:
-                # Für normale Geräte
-                known_devices = config.get("known_devices", {})
-                sensebox_devices = known_devices.get("senseBox", [])
-                
-                for device in sensebox_devices:
+
+                    # Match nach Location (senseBox:home/median/<Location>)
+                    if location == device_id:
+                        return median_entity.get("sensors", [])
+
+                    # Wenn device_id wie "median_<Location>" aussieht, Location extrahieren
+                    if isinstance(device_id, str) and device_id.startswith("median_"):
+                        loc_from_id = device_id[len("median_"):]
+                        if location == loc_from_id:
+                            return median_entity.get("sensors", [])
+
+                    # Fallback: Ende des Topic-Patterns muss mit /<device_id> übereinstimmen
+                    if topic_pattern.endswith(f"/{device_id}"):
+                        return median_entity.get("sensors", [])
+
+                return None
+
+            # Nicht-Median: in known_devices nach der ID suchen
+            known_devices: Dict[str, list] = config.get("known_devices", {})
+
+            # Wenn Typ explizit ist, zunächst passend filtern
+            if device_type == "sensebox":
+                candidates = known_devices.get("senseBox", [])
+                for device in candidates:
                     if device.get("id") == device_id:
                         return device.get("sensors", [])
-            
+                return None
+
+            if device_type == "specialized":
+                # In allen Nicht-senseBox-Kategorien suchen (z. B. Temperature, WaterLevel)
+                for category_name, devices in known_devices.items():
+                    if category_name == "senseBox":
+                        continue
+                    for device in devices:
+                        if device.get("id") == device_id:
+                            return device.get("sensors", [])
+                return None
+
+            # Auto-Detect: erst senseBox, dann alle anderen Kategorien
+            for device in known_devices.get("senseBox", []):
+                if device.get("id") == device_id:
+                    return device.get("sensors", [])
+
+            for category_name, devices in known_devices.items():
+                if category_name == "senseBox":
+                    continue
+                for device in devices:
+                    if device.get("id") == device_id:
+                        return device.get("sensors", [])
+
             return None
-            
+
         except Exception as e:
             _LOGGER.error("Fehler beim Laden der konfigurierten Sensoren für Gerät %s: %s", device_id, e)
             return None
@@ -212,7 +281,7 @@ class ParserService(ParserServiceProtocol):
             if not device_id:
                 return None
             
-            # Fields-Pfad bestimmen
+            # Fields-Pfad bestimmen – ausschließlich "fields" (bzw. konfigurierbarer Pfad)
             fields_path = self._parsing_config.get("specialized_sensors", {}).get("data_path", "fields")
             fields = data.get(fields_path, {})
             
@@ -227,11 +296,13 @@ class ParserService(ParserServiceProtocol):
                 return None
             
             # Konfigurierte Sensoren für dieses Gerät laden
-            configured_sensors = await self._get_configured_sensors_for_device(device_id, False)
+            configured_sensors = await self._get_configured_sensors_for_device(
+                device_id, False, device_type="specialized"
+            )
             if not configured_sensors:
                 return None
             
-            # Sensordaten extrahieren - nur konfigurierte Sensoren
+            # Sensordaten extrahieren – strikt nach Konfiguration
             sensor_data = {}
             for field_name, field_value in fields.items():
                 if isinstance(field_value, (int, float)) and field_name in configured_sensors:
@@ -277,7 +348,7 @@ class ParserService(ParserServiceProtocol):
     
     def _extract_device_id_from_topic(self, topic: str) -> Optional[str]:
         """Extrahiert die Device-ID aus dem Topic."""
-        # senseBox:home/DeviceID -> DeviceID
+        # senseBox:home/DeviceID bzw. senseBox:home/median/Location
         if topic.startswith("senseBox:home/"):
             return topic.split("/")[-1]
         
@@ -291,6 +362,24 @@ class ParserService(ParserServiceProtocol):
         """Prüft ob es sich um ein Median-Topic handelt."""
         topic_pattern = median_detection.get("topic_pattern", "senseBox:home/median")
         return topic.startswith(topic_pattern)
+
+    async def _map_median_location_to_id(self, location_or_id: str) -> str:
+        """Mappt einen Median-Standortnamen auf die konfigurierte Median-ID.
+
+        Falls bereits eine Median-ID übergeben wurde oder keine Konfiguration
+        gefunden wird, wird der Eingabewert zurückgegeben.
+        """
+        try:
+            median_entities = await self.config_service.get_median_entities()
+
+            for entity in median_entities:
+                if not isinstance(entity, dict):
+                    continue
+                if entity.get("id") == location_or_id or entity.get("location") == location_or_id:
+                    return entity.get("id", location_or_id)
+        except Exception:
+            pass
+        return location_or_id
     
     def _is_rssi_only_message(self, fields: Dict[str, Any]) -> bool:
         """Prüft ob es sich um eine RSSI-Only-Nachricht handelt."""
