@@ -82,11 +82,6 @@ mypy.ini
 .flake8
 .coveragerc
 
-# GitHub Actions (keep only HACS validation)
-.github/workflows/
-!.github/workflows/validate.yml
-!.github/workflows/hassfest.yml
-
 # Translations (keep only the actual translation files)
 translations/
 !custom_components/sensorbridge_partheland/translations/
