@@ -1,0 +1,39 @@
+name: HACS Validation
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 3 * * 5'  # CET → 05:00 Europe/Berlin
+    - cron: '0 4 * * 5'  # CEST → 05:00 Europe/Berlin
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  validate-hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Time guard (only run at 05:00 Europe/Berlin on schedule)
+        if: github.event_name == 'schedule'
+        id: timecheck
+        run: |
+          HOUR=$(TZ=Europe/Berlin date +'%H')
+          echo "Local hour in Europe/Berlin: $HOUR"
+          if [ "$HOUR" = "05" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: HACS validation
+        if: github.event_name != 'schedule' || steps.timecheck.outputs.should_run == 'true'
+        uses: hacs/[email protected]
+        with:
+          category: integration
+          ignore: brands images
+
+
