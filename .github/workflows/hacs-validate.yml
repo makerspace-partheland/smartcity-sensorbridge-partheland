@@ -1,7 +1,6 @@
 name: HACS Validation
 
 on:
-  push:
   pull_request:
   schedule:
     - cron: '0 3 * * 5'  # CET → 05:00 Europe/Berlin

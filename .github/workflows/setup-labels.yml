@@ -1,8 +1,6 @@
 name: Setup Repository Labels
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
