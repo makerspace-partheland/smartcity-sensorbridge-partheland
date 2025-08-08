@@ -129,12 +129,6 @@ logger:
 
 MIT License - Sie können die Software frei nutzen und anpassen.
 
-## Danksagungen
-
-- SmartCity Partheland Team für die Sensordaten
-- Home Assistant Community für die großartige Plattform
-- Makerspace Partheland e.V. für die Unterstützung
-
 ---
 
 **Tipp**: Diese Integration ist Teil des SmartCity-Projekts Partheland. Weitere Informationen finden Sie auf [makerspace-partheland.de](https://makerspace-partheland.de).
