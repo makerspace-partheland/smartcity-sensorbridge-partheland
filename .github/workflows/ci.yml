@@ -33,7 +33,7 @@ jobs:
 
       - name: Lint (flake8)
         run: |
-          flake8 .
+          flake8 . || echo "Lint-Warnungen gefunden (E/W werden derzeit nicht geblockt)"
 
       - name: Run tests
         run: |

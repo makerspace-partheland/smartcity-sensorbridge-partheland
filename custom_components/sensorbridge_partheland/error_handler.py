@@ -50,7 +50,7 @@ class ErrorHandler(ErrorHandlerProtocol):
         self.hass = hass
         self._error_count: Dict[str, int] = {}
         self._max_errors_per_context = 10
-        self._config_service: Optional[ConfigService] = None
+        self._config_service: Optional[Any] = None
     
     async def handle_error(self, error: Exception, context: str) -> None:
         """Behandelt einen Fehler."""
