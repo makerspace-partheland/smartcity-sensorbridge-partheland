@@ -30,7 +30,7 @@ jobs:
           fi
 
       - name: HACS validation
-        if: github.event_name != 'schedule' || steps.timecheck.outputs.should_run == 'true'
+        if: ${{ github.event_name != 'schedule' || (github.event_name == 'schedule' && steps.timecheck.outputs.should_run == 'true') }}
         uses: hacs/[email protected]
         with:
           category: integration
