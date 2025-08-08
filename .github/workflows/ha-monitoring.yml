@@ -1,0 +1,53 @@
+name: Home Assistant Release Monitoring
+
+on:
+  schedule:
+    # Zwei Zeiten für CET/CEST; Guard stellt auf 05:00 Europe/Berlin sicher
+    - cron: '0 3 * * 5' # Freitags 03:00 UTC (05:00 CET)
+    - cron: '0 4 * * 5' # Freitags 04:00 UTC (05:00 CEST)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  check-ha-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Time guard (run only at 05:00 Europe/Berlin)
+        id: timecheck
+        run: |
+          HOUR=$(TZ=Europe/Berlin date +'%H')
+          echo "Local hour in Europe/Berlin: $HOUR"
+          if [ "$HOUR" = "05" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.2'
+        if: steps.timecheck.outputs.should_run == 'true'
+
+      - name: Run HA release check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        if: steps.timecheck.outputs.should_run == 'true'
+        run: |
+          python .github/scripts/check_ha_releases.py
+
+      - name: Commit state update (if changed)
+        if: steps.timecheck.outputs.should_run == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "ha: record processed Home Assistant release"
+          file_pattern: .github/ha_release_state.json
+
+

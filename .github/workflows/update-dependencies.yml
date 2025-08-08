@@ -1,0 +1,58 @@
+name: Weekly Dependency Update (pip + manifest)
+
+on:
+  schedule:
+    # GitHub cron ist UTC. Zwei Zeiten decken CET/CEST ab und wir gardern zur lokalen Zeit 05:00 Europe/Berlin.
+    - cron: '0 3 * * 5' # Freitags 03:00 UTC (05:00 CET)
+    - cron: '0 4 * * 5' # Freitags 04:00 UTC (05:00 CEST)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Time guard (run only at 05:00 Europe/Berlin)
+        id: timecheck
+        run: |
+          HOUR=$(TZ=Europe/Berlin date +'%H')
+          echo "Local hour in Europe/Berlin: $HOUR"
+          if [ "$HOUR" = "05" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.2'
+        if: steps.timecheck.outputs.should_run == 'true'
+
+      - name: Update requirements (patch/minor only)
+        if: steps.timecheck.outputs.should_run == 'true'
+        run: |
+          python .github/scripts/update_requirements.py
+
+      - name: Create Pull Request
+        if: steps.timecheck.outputs.should_run == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: |
+            deps: weekly dependency updates (patch/minor)
+          title: "deps: weekly dependency updates (patch/minor)"
+          body: |
+            Automated weekly dependency update for pip requirements and manifest.
+            - Applies only patch/minor updates
+            - Skips major updates and sensitive packages' majors
+          labels: dependencies, python
+          branch: chore/weekly-deps-update
+          delete-branch: true
+
+

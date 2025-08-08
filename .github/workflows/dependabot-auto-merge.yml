@@ -1,0 +1,35 @@
+name: Dependabot Auto-Approve & Auto-Merge (Patch)
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Auto-approve patch updates
+        if: contains(steps.metadata.outputs.update-type, 'version-update:semver-patch') && !contains(steps.metadata.outputs.dependencies, 'homeassistant') && !contains(steps.metadata.outputs.dependencies, 'paho-mqtt') && !contains(steps.metadata.outputs.dependencies, 'aiohttp')
+        uses: hmarr/auto-approve-action@v4
+        with:
+          review-message: "Auto-approve patch update from Dependabot"
+
+      - name: Enable auto-merge (squash) for patch
+        if: contains(steps.metadata.outputs.update-type, 'version-update:semver-patch') && !contains(steps.metadata.outputs.dependencies, 'homeassistant') && !contains(steps.metadata.outputs.dependencies, 'paho-mqtt') && !contains(steps.metadata.outputs.dependencies, 'aiohttp')
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          merge-method: squash
+
+
