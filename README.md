@@ -1,3 +1,4 @@
+[![HACS Validation](https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/actions/workflows/hacs-validate.yml/badge.svg)](https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/actions/workflows/hacs-validate.yml)
 # SmartCity SensorBridge Partheland
 
 Eine einfache Home Assistant Custom Integration für das SmartCity-Netzwerk Partheland, die Umweltdaten von lokalen Sensoren in Ihr Smart Home bringt.
