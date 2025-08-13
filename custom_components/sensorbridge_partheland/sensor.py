@@ -17,7 +17,9 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import slugify
 from homeassistant.helpers.entity import async_generate_entity_id
@@ -90,6 +92,84 @@ async def create_device_entities(
         # Sensoren des Geräts
         sensors = device_info.get("sensors", [])
 
+        # 1) Gerätespezifische primäre Darstellung sicherstellen
+        device_type = device_info.get("type", "").lower()
+
+        # Für senseBox: dedizierte Meta-Entity zuerst (Icon: mdi:memory)
+        if device_type == "sensebox":
+            meta_entity_data = {
+                "device_id": device_id,
+                "sensor_type": "__device_meta",
+                "device_name": device_info.get("name", device_id),
+                "attributes": {
+                    "device_id": device_id,
+                    "device_name": device_info.get("name", device_id),
+                    "device_type": device_info.get("type", "senseBox"),
+                    "topic_pattern": device_info.get("topic_pattern"),
+                    "sensors": sensors,
+                    "sensors_count": len(sensors),
+                },
+            }
+            meta_entity = SensorBridgeSensor(coordinator, meta_entity_data, config_service)
+            # Icon-Override und Kategorie für Meta-Entity setzen
+            meta_entity._attr_icon = "mdi:memory"
+            meta_entity._attr_entity_category = EntityCategory.DIAGNOSTIC
+            entities.append(meta_entity)
+
+        # Für median: dedizierte Meta-Entity zuerst (Icon: mdi:chart-box-outline)
+        if device_type == "median":
+            meta_entity_data = {
+                "device_id": device_id,
+                "sensor_type": "__device_meta",
+                "device_name": device_info.get("name", device_id),
+                "attributes": {
+                    "device_id": device_id,
+                    "device_name": device_info.get("name", device_id),
+                    "device_type": device_info.get("type", "median"),
+                    "topic_pattern": device_info.get("topic_pattern"),
+                    "sensors": sensors,
+                    "sensors_count": len(sensors),
+                },
+            }
+            meta_entity = SensorBridgeSensor(coordinator, meta_entity_data, config_service)
+            meta_entity._attr_icon = "mdi:chart-box-outline"
+            meta_entity._attr_entity_category = EntityCategory.DIAGNOSTIC
+            entities.append(meta_entity)
+
+        # Für alle anderen Gerätetypen ebenfalls eine Meta-Entity (Icon je Typ)
+        if device_type not in ("sensebox", "median"):
+            meta_entity_data = {
+                "device_id": device_id,
+                "sensor_type": "__device_meta",
+                "device_name": device_info.get("name", device_id),
+                "attributes": {
+                    "device_id": device_id,
+                    "device_name": device_info.get("name", device_id),
+                    "device_type": device_info.get("type", device_type),
+                    "topic_pattern": device_info.get("topic_pattern"),
+                    "sensors": sensors,
+                    "sensors_count": len(sensors),
+                },
+            }
+            meta_entity = SensorBridgeSensor(coordinator, meta_entity_data, config_service)
+            # Icon abhängig vom Gerätetyp bestimmen
+            if device_type == "waterlevel":
+                meta_entity._attr_icon = "mdi:waves"
+            elif device_type == "temperature":
+                meta_entity._attr_icon = "mdi:thermometer"
+            else:
+                meta_entity._attr_icon = "mdi:sensor"
+            meta_entity._attr_entity_category = EntityCategory.DIAGNOSTIC
+            entities.append(meta_entity)
+
+        # 2) Sensor-Reihenfolge pro Typ: wichtigstes zuerst
+        if device_type == "waterlevel":
+            if "water_level" in sensors:
+                sensors = ["water_level"] + [s for s in sensors if s != "water_level"]
+        elif device_type == "temperature":
+            priority = ["LuftTemp", "TempC1", "TempC2", "WasserTemp", "WasserTemp_1", "WasserTemp_2"]
+            sensors = sorted(sensors, key=lambda s: (s not in priority, priority.index(s) if s in priority else 999))
+
         for sensor_name in sensors:
             entity_data = {
                 "device_id": device_id,
@@ -135,6 +215,31 @@ async def create_median_entities(
 
         # Sensoren des Medians
         sensors = median_info.get("sensors", [])
+
+        # Meta-Entity (Diagnose) anlegen, damit Geräte-Icon/Status klar ist
+        try:
+            from homeassistant.helpers.entity import EntityCategory
+        except Exception:
+            EntityCategory = None  # type: ignore
+
+        meta_entity_data = {
+            "device_id": median_id,
+            "sensor_type": "__device_meta",
+            "device_name": median_info.get("name", median_id),
+            "attributes": {
+                "device_id": median_id,
+                "device_name": median_info.get("name", median_id),
+                "device_type": "median",
+                "location": median_info.get("location", ""),
+                "sensors": sensors,
+                "sensors_count": len(sensors),
+            },
+        }
+        meta_entity = SensorBridgeSensor(coordinator, meta_entity_data, config_service)
+        meta_entity._attr_icon = "mdi:chart-box-outline"
+        if EntityCategory is not None:
+            meta_entity._attr_entity_category = EntityCategory.DIAGNOSTIC
+        entities.append(meta_entity)
 
         for sensor_name in sensors:
             entity_data = {
@@ -212,7 +317,11 @@ class SensorBridgeSensor(SensorEntity):
         self._attr_icon = "mdi:sensor"
 
         # State-Class bestimmen
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        if sensor_name == "__device_meta":
+            # Meta-Entity liefert textuellen Status (online/stale/offline)
+            self._attr_state_class = None
+        else:
+            self._attr_state_class = SensorStateClass.MEASUREMENT
 
         # Device-Info setzen (ohne via_device)
         external_urls = entity_data.get("external_urls", {})
@@ -263,10 +372,29 @@ class SensorBridgeSensor(SensorEntity):
         except Exception:
             pass
 
+        # Geräte-Icon anhand der Diagnose-Entität auf das Gerät anwenden
+        try:
+            if self.entity_data.get("sensor_type") == "__device_meta":
+                device_id = self.entity_data.get("device_id")
+                if device_id:
+                    device_registry = dr.async_get(self.coordinator.hass)
+                    dev = device_registry.async_get_device(identifiers={(DOMAIN, device_id)})
+                    if dev is not None:
+                        # Verwende das bereits gesetzte Icon dieser Meta-Entity
+                        device_registry.async_update_device(dev.id, icon=self._attr_icon)
+        except Exception as e:
+            _LOGGER.debug("Konnte Geräte-Icon nicht setzen: %s", e)
+
         # Coordinator-Update-Callback registrieren
         self.async_on_remove(
             self.coordinator.async_add_listener(self.async_write_ha_state)
         )
+
+        # Initialen State sofort schreiben, damit neue State-Texte (z. B. Deutsch) direkt sichtbar sind
+        try:
+            self.async_write_ha_state()
+        except Exception:
+            pass
 
         _LOGGER.debug(
             "SensorBridge sensor added to hass: %s", self._attr_unique_id
@@ -294,10 +422,11 @@ class SensorBridgeSensor(SensorEntity):
                     device_class_str
                 )
 
-            # Icon setzen
-            self._attr_icon = await self._get_sensor_icon(
-                sensor_name, device_class_str
-            )
+            # Icon setzen (für Meta explizit lassen)
+            if sensor_name != "__device_meta":
+                self._attr_icon = await self._get_sensor_icon(
+                    sensor_name, device_class_str
+                )
 
             # Anzeigename aus Übersetzung auffüllen, damit die UI-Felder nicht leer sind
             try:
@@ -339,8 +468,10 @@ class SensorBridgeSensor(SensorEntity):
                 self._attr_icon,
             )
 
-            # Namen-Änderungen sofort in den Zustand übernehmen
-            self.async_write_ha_state()
+            # Namen-Änderungen ggf. in den Zustand übernehmen
+            # Meta-Entity schreibt den State sehr früh ohnehin; doppelte Logbucheinträge vermeiden
+            if sensor_name != "__device_meta":
+                self.async_write_ha_state()
 
         except Exception as e:
             _LOGGER.error("Error loading sensor attributes: %s", e)
@@ -405,11 +536,74 @@ class SensorBridgeSensor(SensorEntity):
             _LOGGER.error("Error determining sensor icon: %s", e)
             return "mdi:sensor"
 
+    def _format_duration(self, seconds: float) -> str:
+        """Formatiert eine Dauer kurz (z. B. 'vor 5 min', 'vor 2 Std.')."""
+        try:
+            total_seconds = int(max(0, round(seconds)))
+            if total_seconds < 60:
+                return f"vor {total_seconds} s"
+
+            total_minutes = total_seconds // 60
+            if total_minutes < 60:
+                return f"vor {total_minutes} min"
+
+            total_hours = total_minutes // 60
+            if total_hours < 24:
+                rem_min = total_minutes % 60
+                if rem_min:
+                    return f"vor {total_hours} Std. {rem_min} min"
+                return f"vor {total_hours} Std."
+
+            total_days = total_hours // 24
+            rem_hours = total_hours % 24
+            if rem_hours:
+                return f"vor {total_days} Tg. {rem_hours} Std."
+            return f"vor {total_days} Tg."
+        except Exception:
+            return "vor 1 s"
+
     @property
     def native_value(self) -> StateType:
         """Gibt den aktuellen Sensor-Wert zurück."""
         device_id = self.entity_data.get("device_id")
         sensor_name = self.entity_data.get("sensor_type")
+
+        # Meta-Entity: Online/Stale/Offline Status
+        if sensor_name == "__device_meta":
+            # Als textueller Sensor behandeln
+            self._attr_device_class = None
+            self._attr_native_unit_of_measurement = None
+            # MQTT verbunden?
+            mqtt_connected = False
+            try:
+                mqtt_connected = bool(self.coordinator.mqtt_service.is_connected)
+            except Exception:
+                mqtt_connected = False
+
+            # Last Seen und Threshold
+            last_seen = None
+            try:
+                if hasattr(self.coordinator, "get_device_last_seen"):
+                    last_seen = self.coordinator.get_device_last_seen(device_id)
+            except Exception:
+                last_seen = None
+
+            # Threshold bestimmen
+            stale_after = 300
+            try:
+                device_type = self.entity_data.get("attributes", {}).get("device_type")
+                if hasattr(self.coordinator, "get_effective_stale_seconds"):
+                    stale_after = int(self.coordinator.get_effective_stale_seconds(device_id, device_type))
+            except Exception:
+                pass
+
+            # Statuslogik
+            if not mqtt_connected:
+                return "Offline"
+            if last_seen is None:
+                return "Veraltet"
+            import time as _t
+            return "Online" if (_t.monotonic() - last_seen) <= stale_after else "Veraltet"
 
         if not device_id or not sensor_name:
             return None
@@ -427,13 +621,28 @@ class SensorBridgeSensor(SensorEntity):
         # Zusätzliche Diagnoseattribute
         try:
             mqtt_connected = getattr(self.coordinator.mqtt_service, "is_connected", False)
-            attrs["mqtt_connected"] = bool(mqtt_connected)
+            attrs["mqtt_connected"] = "Ja" if bool(mqtt_connected) else "Nein"
             device_id = self.entity_data.get("device_id")
             last_seen = None
             if hasattr(self.coordinator, "get_device_last_seen"):
                 last_seen = self.coordinator.get_device_last_seen(device_id)
             if last_seen is not None:
-                attrs["last_seen_seconds_ago"] = round(max(0.0, time.monotonic() - last_seen), 1)
+                delta_seconds = max(0.0, time.monotonic() - last_seen)
+                attrs["last_seen"] = self._format_duration(delta_seconds)
+            # Für Meta-Entity: zusätzliche Schwelle und Sensorliste/Topic
+            if self.entity_data.get("sensor_type") == "__device_meta":
+                # Threshold
+                try:
+                    device_type = attrs.get("device_type")
+                    if hasattr(self.coordinator, "get_effective_stale_seconds"):
+                        threshold_seconds = int(
+                            self.coordinator.get_effective_stale_seconds(device_id, device_type)
+                        )
+                        # In Minuten ausgeben, da UI/Config in Minuten arbeitet
+                        attrs["inactivity_threshold_minutes"] = int(round(threshold_seconds / 60))
+                except Exception:
+                    pass
+                # Sensors/Topic sind für Meta-Entity bereits in attributes enthalten
         except Exception:
             pass
         return attrs
@@ -441,6 +650,9 @@ class SensorBridgeSensor(SensorEntity):
     @property
     def available(self) -> bool:
         """Gibt zurück ob der Sensor verfügbar ist."""
+        # Meta-Entity soll immer verfügbar sein, Status steckt im State
+        if self.entity_data.get("sensor_type") == "__device_meta":
+            return True
         # Globaler Coordinator-Status und MQTT-Verbindung
         if not self.coordinator.last_update_success:
             return False
@@ -460,11 +672,19 @@ class SensorBridgeSensor(SensorEntity):
             # Noch keine Daten empfangen → nicht als unavailable markieren
             return True
         stale_after = 300
-        if hasattr(self.coordinator, "get_stale_after_seconds"):
+        # Gerätetyp bestimmen (für per-type Stale)
+        device_type = self.entity_data.get("attributes", {}).get("device_type")
+        # Effektiven Threshold vom Coordinator holen, falls verfügbar
+        if hasattr(self.coordinator, "get_effective_stale_seconds"):
+            try:
+                stale_after = int(self.coordinator.get_effective_stale_seconds(self.entity_data.get("device_id"), device_type))
+            except Exception:
+                pass
+        elif hasattr(self.coordinator, "get_stale_after_seconds"):
             try:
                 stale_after = int(self.coordinator.get_stale_after_seconds())
             except Exception:
-                stale_after = 300
+                pass
         return (time.monotonic() - last_seen) <= stale_after
 
     async def async_will_remove_from_hass(self) -> None:
@@ -544,19 +764,19 @@ class SensorBridgeSensor(SensorEntity):
                 sensor_data = sensor_translations[sensor_name]
                 if isinstance(sensor_data, dict) and "name" in sensor_data:
                     _LOGGER.info(
-                        "✅ Translation gefunden für %s: %s",
+                        "Translation gefunden für %s: %s",
                         sensor_name,
                         sensor_data["name"],
                     )
                 else:
                     _LOGGER.warning(
-                        "❌ Invalid translation structure for %s: %s",
+                        "Invalid translation structure for %s: %s",
                         sensor_name,
                         sensor_data,
                     )
             else:
                 _LOGGER.warning(
-                    "❌ KEINE Translation gefunden für Key: %s", sensor_name
+                    "KEINE Translation gefunden für Key: %s", sensor_name
                 )
                 _LOGGER.warning(
                     "Verfügbare Keys: %s", list(sensor_translations.keys())

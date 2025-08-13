@@ -35,6 +35,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         # Services asynchron initialisieren
         await _async_initialize_services(hass)
 
+        # Hinweis: Geräte-Icons werden nicht separat gecacht – Gerätelisten-Icons stammen
+        # aus der primären Entität (MDI), nicht aus benutzerdefinierten Mappings.
+
         # Debug-Services registrieren (nur wenn noch nicht registriert)
         try:
             hass.services.async_register(

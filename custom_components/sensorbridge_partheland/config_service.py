@@ -9,6 +9,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import re
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
@@ -117,6 +118,78 @@ class ConfigService(ConfigServiceProtocol):
         """Gibt die Parsing-Konfiguration zurück."""
         config = await self.load_config()
         return config.get("parsing", {})
+
+    async def get_availability_config(self) -> Dict[str, Any]:
+        """Gibt die Availability-Konfiguration zurück.
+
+        Struktur (optional):
+        {
+          "default_stale_seconds": 3600,            # Sekunden (Kompatibilität)
+          "default": "30m",                        # Menschlich (bevorzugt)
+          "per_type": {"sensebox": "15m", "specialized": "1h", "median": "15m"},
+          "per_device": {"<device_id>": "2h"}
+        }
+        """
+        config = await self.load_config()
+        availability = config.get("availability", {})
+        if not isinstance(availability, dict):
+            return {}
+
+        def _parse_to_seconds(value: Any) -> Optional[int]:
+            # Int/float: als Sekunden (Rückwärtskompatibilität)
+            if isinstance(value, (int, float)):
+                v = int(value)
+                return v if v > 0 else None
+            if isinstance(value, str):
+                s = value.strip().lower()
+                if not s:
+                    return None
+                # Unterstütze zusammengesetzte Angaben, z. B. "1h30m", "45m", "900s"
+                total = 0
+                for num, unit in re.findall(r"(\d+)\s*([smh])", s):
+                    n = int(num)
+                    if unit == "s":
+                        total += n
+                    elif unit == "m":
+                        total += n * 60
+                    elif unit == "h":
+                        total += n * 3600
+                # Falls keine Einheit, aber reine Zahl als String → als Minuten interpretieren
+                if total == 0 and s.isdigit():
+                    total = int(s) * 60
+                return total or None
+            return None
+
+        normalized: Dict[str, Any] = {
+            "default_stale_seconds": None,
+            "per_type": {},
+            "per_device": {},
+        }
+
+        # Default aus "default" (menschlich) oder "default_stale_seconds" (kompatibel)
+        default_human = availability.get("default")
+        default_seconds = availability.get("default_stale_seconds")
+        parsed_default = _parse_to_seconds(default_human) if default_human is not None else _parse_to_seconds(default_seconds)
+        if parsed_default:
+            normalized["default_stale_seconds"] = max(60, parsed_default)
+
+        # per_type
+        per_type = availability.get("per_type", {}) or {}
+        if isinstance(per_type, dict):
+            for key, val in per_type.items():
+                p = _parse_to_seconds(val)
+                if p:
+                    normalized["per_type"][str(key)] = max(60, p)
+
+        # per_device
+        per_device = availability.get("per_device", {}) or {}
+        if isinstance(per_device, dict):
+            for key, val in per_device.items():
+                p = _parse_to_seconds(val)
+                if p:
+                    normalized["per_device"][str(key)] = max(60, p)
+
+        return normalized
     
     async def validate_config(self) -> bool:
         """Validiert die Konfiguration."""
@@ -226,7 +299,7 @@ class ConfigService(ConfigServiceProtocol):
         config = await self.load_config()
         field_mapping = config.get("field_mapping", {})
         return field_mapping.get("icons", {})
-    
+
     async def get_device_class_mapping(self) -> Dict[str, Any]:
         """Gibt das Device Class Mapping zurück."""
         # Import asynchron im Event Loop

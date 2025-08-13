@@ -101,7 +101,7 @@
       "ILLUMINANCE": "mdi:brightness-5",
       "SOUND_PRESSURE": "mdi:volume-high",
       "IRRADIANCE": "mdi:weather-sunny",
-      "WATER_LEVEL": "mdi:water",
+      "WATER_LEVEL": "mdi:waves",
       "default": "mdi:sensor"
     },
     "device_class_enums": {
@@ -953,5 +953,15 @@
     "create_entities_per_field": true,
     "filter_by_sensor_categories": true,
     "ignore_rssi_only_messages": true
+  },
+  "availability": {
+    "default": "30m",
+    "per_type": {
+      "sensebox": "15m",
+      "median": "30m",
+      "specialized": "1h"
+    },
+    "per_device": {
+    }
   }
 } 

@@ -50,6 +50,20 @@
   },
   "entity": {
     "sensor": {
+      "__device_meta": {
+        "name": "Ger\u00e4testatus",
+        "state_attributes": {
+          "device_id": { "name": "Ger\u00e4te-ID" },
+          "device_name": { "name": "Ger\u00e4tename" },
+          "device_type": { "name": "Ger\u00e4tetyp" },
+          "topic_pattern": { "name": "Topic" },
+          "sensors": { "name": "Sensoren" },
+          "sensors_count": { "name": "Sensoranzahl" },
+          "mqtt_connected": { "name": "MQTT verbunden" },
+          "inactivity_threshold_minutes": { "name": "Inaktivit\u00e4tsgrenze (Minuten)" },
+          "last_seen": { "name": "Zuletzt gesehen" }
+        }
+      },
       "Beleuchtungsstaerke": {"name": "Beleuchtungsst\u00e4rke"},
       "Lautstaerke": {"name": "Lautst\u00e4rke"},
       "Lautstaerke_Max": {"name": "Maximale Lautst\u00e4rke"},
@@ -84,6 +98,9 @@
   },
   "state": {
     "connected": "Verbunden",
-    "disconnected": "Getrennt"
+    "disconnected": "Getrennt",
+    "online": "Online",
+    "offline": "Offline",
+    "stale": "Veraltet"
   }
 } 

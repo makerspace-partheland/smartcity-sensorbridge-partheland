@@ -71,6 +71,9 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         self._mqtt_topics: List[str] = []
         self._device_last_seen: Dict[str, float] = {}
         self._stale_after_seconds: int = 300
+        self._default_stale_seconds: int = 300
+        self._per_type_stale: Dict[str, int] = {}
+        self._per_device_stale: Dict[str, int] = {}
         self._mqtt_unsubs: List[Any] = []
         self._ha_entity_ids_by_device: Dict[str, set[str]] = {}
         
@@ -95,10 +98,26 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             try:
                 mqtt_conf = await self.config_service.get_mqtt_config()
                 keepalive = int(mqtt_conf.get("keepalive", 60))
-                # 4x Keepalive oder 5 Minuten – was größer ist
-                self._stale_after_seconds = max(keepalive * 4, 300)
+                base_keepalive = max(keepalive * 4, 300)
+                self._default_stale_seconds = base_keepalive
+                self._stale_after_seconds = base_keepalive
             except Exception:
                 self._stale_after_seconds = 300
+                self._default_stale_seconds = 300
+
+            # Availability-Konfiguration laden (überschreibt Defaults)
+            try:
+                avail = await self.config_service.get_availability_config()
+                if isinstance(avail.get("default_stale_seconds"), int):
+                    self._default_stale_seconds = max(60, avail["default_stale_seconds"])
+                # per_type: Keys auf lowercase normalisieren, damit "senseBox"/"Temperature" etc. matchen
+                raw_per_type = avail.get("per_type", {}) or {}
+                self._per_type_stale = {str(k).lower(): int(v) for k, v in raw_per_type.items()}
+                # per_device bleibt 1:1
+                self._per_device_stale = avail.get("per_device", {}) or {}
+            except Exception:
+                self._per_type_stale = {}
+                self._per_device_stale = {}
 
             # Auf MQTT Connect/Disconnect Events reagieren, um UI-Update zu triggern
             self._mqtt_unsubs.append(
@@ -217,14 +236,6 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         """Reagiere auf MQTT-Connect: UI-Update triggern."""
         try:
             self.async_set_updated_data(self._sensor_data)
-            # Pro Gerät Logbuch-Ereignis mit entity_id
-            device_ids: List[str] = list({*self.selected_devices, *self.selected_median_entities, *self._sensor_data.keys()})
-            for dev_id in device_ids:
-                ent_id = self._find_representative_entity_id(dev_id)
-                self.hass.bus.async_fire(
-                    EVENT_MQTT_CONNECTED,
-                    {"device_id": dev_id, "entity_id": ent_id} if ent_id else {"device_id": dev_id},
-                )
         except Exception as e:
             _LOGGER.debug("Fehler beim Verarbeiten des MQTT-Connect-Events: %s", e)
 
@@ -232,14 +243,6 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         """Reagiere auf MQTT-Disconnect: UI-Update triggern (Entities können unavailable werden)."""
         try:
             self.async_set_updated_data(self._sensor_data)
-            # Pro Gerät Logbuch-Ereignis mit entity_id
-            device_ids: List[str] = list({*self.selected_devices, *self.selected_median_entities, *self._sensor_data.keys()})
-            for dev_id in device_ids:
-                ent_id = self._find_representative_entity_id(dev_id)
-                self.hass.bus.async_fire(
-                    EVENT_MQTT_DISCONNECTED,
-                    {"device_id": dev_id, "entity_id": ent_id} if ent_id else {"device_id": dev_id},
-                )
         except Exception as e:
             _LOGGER.debug("Fehler beim Verarbeiten des MQTT-Disconnect-Events: %s", e)
 
@@ -250,6 +253,20 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
     def get_stale_after_seconds(self) -> int:
         """Gibt den Stale-Threshold in Sekunden zurück."""
         return self._stale_after_seconds
+
+    def get_effective_stale_seconds(self, device_id: str, device_type: Optional[str] = None) -> int:
+        """Berechnet den effektiven Stale-Threshold für ein Gerät.
+
+        Reihenfolge: per_device > per_type > default
+        """
+        # Per-Device
+        if device_id in self._per_device_stale:
+            return self._per_device_stale[device_id]
+        # Per-Type
+        if device_type and device_type.lower() in self._per_type_stale:
+            return self._per_type_stale[device_type.lower()]
+        # Default
+        return self._default_stale_seconds
 
     def _find_representative_entity_id(self, device_id: str) -> Optional[str]:
         """Findet eine beliebige Entity-ID, die zu einem Gerät gehört."""
