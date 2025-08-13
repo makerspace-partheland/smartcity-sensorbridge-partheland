@@ -1,7 +1,7 @@
 {
   "domain": "sensorbridge_partheland",
   "name": "SmartCity SensorBridge Partheland",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland",
   "issue_tracker": "https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/issues",
   "requirements": [
