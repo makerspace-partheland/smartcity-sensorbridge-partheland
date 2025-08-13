@@ -36,13 +36,18 @@ class MQTTService(MQTTServiceProtocol):
         self._callbacks: Dict[str, Callable[[str, Any], None]] = {}
         self._client_id = f"{CLIENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
         self._reconnect_task: Optional[asyncio.Task] = None
-        self._reconnect_delay = 3  # Kürzerer Delay für öffentliche Broker
+        self._reconnect_delay = 3  # Kürzerer Delay für öffentliche Broker (Default, konfigurierbar)
         self._broker_url: Optional[str] = None
         self._broker_port: Optional[int] = None
         self._ws_path: str = "/"  # Default WebSocket path
         self._event_queue: asyncio.Queue = asyncio.Queue()
         self._event_processor_task: Optional[asyncio.Task] = None
         self._ssl_context: Optional[ssl.SSLContext] = None
+        self._keepalive: int = 60
+        self._reconnect_min_delay: int = 1
+        self._reconnect_max_delay: int = 120
+        # Merke abonnierte Topics für automatische Re-Subscription nach Reconnect
+        # (Keys: Topic, Values: Callback)
     
     async def connect(self) -> bool:
         """Verbindet zum MQTT-Broker."""
@@ -50,6 +55,24 @@ class MQTTService(MQTTServiceProtocol):
             # MQTT-Konfiguration laden
             mqtt_config = await self.config_service.get_mqtt_config()
             self._broker_url = mqtt_config.get("broker_url")
+            # Optional konfigurierbare Parameter mit Bounds
+            try:
+                self._keepalive = int(mqtt_config.get("keepalive", 60))
+                self._keepalive = max(15, min(self._keepalive, 600))
+            except Exception:
+                self._keepalive = 60
+            try:
+                self._reconnect_min_delay = int(mqtt_config.get("reconnect_min_delay", 1))
+                self._reconnect_max_delay = int(mqtt_config.get("reconnect_max_delay", 120))
+                if self._reconnect_min_delay < 1:
+                    self._reconnect_min_delay = 1
+                if self._reconnect_max_delay < self._reconnect_min_delay:
+                    self._reconnect_max_delay = self._reconnect_min_delay
+                initial_delay = int(mqtt_config.get("initial_reconnect_delay", 3))
+                self._reconnect_delay = max(1, min(initial_delay, self._reconnect_max_delay))
+            except Exception:
+                # Defaults bleiben erhalten
+                pass
             
             if not self._broker_url:
                 _LOGGER.error("Keine Broker-URL in der Konfiguration gefunden")
@@ -97,10 +120,10 @@ class MQTTService(MQTTServiceProtocol):
                     _LOGGER.info("Versuche Fallback-Verbindung ohne spezielle WebSocket-Konfiguration")
             
             # Verbindungsoptionen setzen
-            self.client.reconnect_delay_set(min_delay=1, max_delay=120)
+            self.client.reconnect_delay_set(min_delay=self._reconnect_min_delay, max_delay=self._reconnect_max_delay)
             
             # Keep-Alive und Timeout konfigurieren
-            self.client.keepalive = 60
+            self.client.keepalive = self._keepalive
             self.client.max_inflight_messages_set(20)
             
             # Für öffentliche Broker: Keine Authentifizierung
@@ -291,11 +314,18 @@ class MQTTService(MQTTServiceProtocol):
     def _on_disconnect(self, client: mqtt.Client, userdata: Any, rc: int) -> None:
         """Callback für MQTT-Trennung."""
         self._connected = False
-        
+        # Freundlichere Fehlermeldung für gängige Gründe
         if rc == 0:
             _LOGGER.info("MQTT-Verbindung ordnungsgemäß getrennt")
         else:
-            _LOGGER.warning("MQTT-Verbindung unerwartet getrennt (RC: %d)", rc)
+            reason_map = {
+                getattr(mqtt, "MQTT_ERR_CONN_LOST", 7): "Verbindung verloren",
+                getattr(mqtt, "MQTT_ERR_NO_CONN", 4): "Keine Verbindung",
+                getattr(mqtt, "MQTT_ERR_PROTOCOL", 2): "Protokollfehler",
+                getattr(mqtt, "MQTT_ERR_INVAL", 3): "Ungültiger Zustand",
+            }
+            msg = reason_map.get(rc, f"RC: {rc}")
+            _LOGGER.warning("MQTT-Verbindung unerwartet getrennt (%s)", msg)
         
         # Thread-sicher: Event in Queue einreihen über Event Loop
         self.hass.loop.call_soon_threadsafe(
@@ -327,6 +357,24 @@ class MQTTService(MQTTServiceProtocol):
                 _LOGGER.error("Fehler im Topic-Callback für %s: %s", topic, e)
         else:
             _LOGGER.debug("Kein Callback für Topic %s registriert", topic)
+
+    async def _resubscribe_all(self) -> None:
+        """Abonniert alle zuvor registrierten Topics nach einem Reconnect erneut."""
+        if not self.client or not self._connected:
+            return
+        if not self._callbacks:
+            return
+        for topic in list(self._callbacks.keys()):
+            try:
+                result, mid = await self.hass.async_add_executor_job(
+                    self.client.subscribe, topic, 0
+                )
+                if result == mqtt.MQTT_ERR_SUCCESS:
+                    _LOGGER.debug("Topic nach Reconnect erneut abonniert: %s (MID: %d)", topic, mid)
+                else:
+                    _LOGGER.warning("Re-Subscription fehlgeschlagen für %s: %s", topic, result)
+            except Exception as e:
+                _LOGGER.error("Fehler bei Re-Subscription für %s: %s", topic, e)
     
     def _execute_callback_safe(self, callback: Callable[[str, Any], None], topic: str, payload: Any) -> None:
         """Führt Callback sicher aus (vermeidet Coroutine-Probleme)."""
@@ -420,6 +468,8 @@ class MQTTService(MQTTServiceProtocol):
                         if self.hass is not None and hasattr(self.hass, 'bus') and self.hass.bus is not None:
                             try:
                                 self.hass.bus.async_fire(EVENT_MQTT_CONNECTED)
+                                # Nach erfolgreichem Reconnect automatisch alle Topics erneut abonnieren
+                                await self._resubscribe_all()
                             except Exception as e:
                                 _LOGGER.error("Fehler beim Firen des Connect-Events: %s", e)
                         else:

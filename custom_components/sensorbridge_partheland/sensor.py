@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional
+import time
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -254,6 +255,14 @@ class SensorBridgeSensor(SensorEntity):
         # Sensor-Attribute laden
         await self._load_sensor_attributes()
 
+        # Repräsentative HA-Entity dem Coordinator melden (für Logbuch-Zuordnung)
+        try:
+            device_id = self.entity_data.get("device_id")
+            if device_id and hasattr(self.coordinator, "register_ha_entity_for_device"):
+                self.coordinator.register_ha_entity_for_device(device_id, self.entity_id)
+        except Exception:
+            pass
+
         # Coordinator-Update-Callback registrieren
         self.async_on_remove(
             self.coordinator.async_add_listener(self.async_write_ha_state)
@@ -414,12 +423,49 @@ class SensorBridgeSensor(SensorEntity):
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Gibt zusätzliche Entity-Attribute zurück."""
-        return self.entity_data.get("attributes", {})
+        attrs = dict(self.entity_data.get("attributes", {}))
+        # Zusätzliche Diagnoseattribute
+        try:
+            mqtt_connected = getattr(self.coordinator.mqtt_service, "is_connected", False)
+            attrs["mqtt_connected"] = bool(mqtt_connected)
+            device_id = self.entity_data.get("device_id")
+            last_seen = None
+            if hasattr(self.coordinator, "get_device_last_seen"):
+                last_seen = self.coordinator.get_device_last_seen(device_id)
+            if last_seen is not None:
+                attrs["last_seen_seconds_ago"] = round(max(0.0, time.monotonic() - last_seen), 1)
+        except Exception:
+            pass
+        return attrs
 
     @property
     def available(self) -> bool:
         """Gibt zurück ob der Sensor verfügbar ist."""
-        return self.coordinator.last_update_success
+        # Globaler Coordinator-Status und MQTT-Verbindung
+        if not self.coordinator.last_update_success:
+            return False
+        try:
+            if not self.coordinator.mqtt_service.is_connected:
+                return False
+        except Exception:
+            # Fallback auf Coordinator-State
+            return False
+
+        # Stale-Detection pro Gerät
+        device_id = self.entity_data.get("device_id")
+        last_seen = None
+        if hasattr(self.coordinator, "get_device_last_seen"):
+            last_seen = self.coordinator.get_device_last_seen(device_id)
+        if last_seen is None:
+            # Noch keine Daten empfangen → nicht als unavailable markieren
+            return True
+        stale_after = 300
+        if hasattr(self.coordinator, "get_stale_after_seconds"):
+            try:
+                stale_after = int(self.coordinator.get_stale_after_seconds())
+            except Exception:
+                stale_after = 300
+        return (time.monotonic() - last_seen) <= stale_after
 
     async def async_will_remove_from_hass(self) -> None:
         """Wird aufgerufen wenn Entity aus Home Assistant entfernt wird."""

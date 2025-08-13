@@ -5,17 +5,22 @@ HA 2025 Compliant - Reine Orchestrierung
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
+import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.debounce import Debouncer
 
-from .const import DEFAULT_SCAN_INTERVAL, EVENT_SENSOR_DATA_RECEIVED
+from .const import (
+    DEFAULT_SCAN_INTERVAL,
+    EVENT_SENSOR_DATA_RECEIVED,
+    EVENT_MQTT_CONNECTED,
+    EVENT_MQTT_DISCONNECTED,
+)
 from .interfaces import (
     CoordinatorProtocol, ConfigServiceProtocol, MQTTServiceProtocol,
     ParserServiceProtocol, EntityFactoryProtocol, ErrorHandlerProtocol
@@ -64,6 +69,10 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         self._sensor_data: Dict[str, Dict[str, Any]] = {}
         self._entities: Dict[str, Dict[str, Any]] = {}
         self._mqtt_topics: List[str] = []
+        self._device_last_seen: Dict[str, float] = {}
+        self._stale_after_seconds: int = 300
+        self._mqtt_unsubs: List[Any] = []
+        self._ha_entity_ids_by_device: Dict[str, set[str]] = {}
         
         _LOGGER.debug("Coordinator initialisiert für %d Geräte", len(self.selected_devices))
     
@@ -82,6 +91,27 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             # MQTT-Topics abonnieren
             await self._subscribe_to_topics()
             
+            # Stale-Threshold anhand Keepalive konfigurieren (mind. 300s)
+            try:
+                mqtt_conf = await self.config_service.get_mqtt_config()
+                keepalive = int(mqtt_conf.get("keepalive", 60))
+                # 4x Keepalive oder 5 Minuten – was größer ist
+                self._stale_after_seconds = max(keepalive * 4, 300)
+            except Exception:
+                self._stale_after_seconds = 300
+
+            # Auf MQTT Connect/Disconnect Events reagieren, um UI-Update zu triggern
+            self._mqtt_unsubs.append(
+                self.hass.bus.async_listen(
+                    EVENT_MQTT_CONNECTED, self._on_mqtt_connected_event
+                )
+            )
+            self._mqtt_unsubs.append(
+                self.hass.bus.async_listen(
+                    EVENT_MQTT_DISCONNECTED, self._on_mqtt_disconnected_event
+                )
+            )
+
             # Erste Daten-Aktualisierung
             await self.async_request_refresh()
             
@@ -101,6 +131,17 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             
             # MQTT-Verbindung trennen
             await self.mqtt_service.disconnect()
+
+            # Event-Listener entfernen
+            try:
+                for unsub in self._mqtt_unsubs:
+                    try:
+                        unsub()
+                    except Exception:
+                        pass
+                self._mqtt_unsubs.clear()
+            except Exception:
+                pass
             
             _LOGGER.info("Coordinator erfolgreich beendet")
             
@@ -114,6 +155,9 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             
             # Daten speichern
             self._sensor_data[device_id] = sensor_data
+
+            # Last seen aktualisieren (monotonic, robust gegen Zeitänderungen)
+            self._device_last_seen[device_id] = time.monotonic()
             
             # Entities erstellen/aktualisieren
             entities = await self.entity_factory.create_entities_for_device(device_id, sensor_data)
@@ -122,11 +166,13 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
                 self._entities[entity_id] = entity
             
             # Event auslösen – KEINE Home Assistant internen Objekte anhängen
+            representative_entity_id = entities[0]["entity_id"] if entities else None
             self.hass.bus.async_fire(
                 EVENT_SENSOR_DATA_RECEIVED,
                 {
                     "device_id": device_id,
                     "entity_count": len(entities),
+                    "entity_id": representative_entity_id,
                 },
             )
             
@@ -156,7 +202,9 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             # Prüfe MQTT-Verbindungsstatus
             if not self.mqtt_service.is_connected:
                 _LOGGER.warning("MQTT-Verbindung verloren, versuche Reconnect")
-                await self.mqtt_service.connect()
+                success = await self.mqtt_service.connect()
+                if not success:
+                    raise UpdateFailed("MQTT nicht verbunden")
             
             # Aktuelle Sensordaten zurückgeben (werden über MQTT-Callbacks aktualisiert)
             return self._sensor_data.copy()
@@ -164,6 +212,68 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         except Exception as e:
             await self.error_handler.handle_error(e, "Health Check")
             return self._sensor_data.copy()
+
+    async def _on_mqtt_connected_event(self, event: Any) -> None:
+        """Reagiere auf MQTT-Connect: UI-Update triggern."""
+        try:
+            self.async_set_updated_data(self._sensor_data)
+            # Pro Gerät Logbuch-Ereignis mit entity_id
+            device_ids: List[str] = list({*self.selected_devices, *self.selected_median_entities, *self._sensor_data.keys()})
+            for dev_id in device_ids:
+                ent_id = self._find_representative_entity_id(dev_id)
+                self.hass.bus.async_fire(
+                    EVENT_MQTT_CONNECTED,
+                    {"device_id": dev_id, "entity_id": ent_id} if ent_id else {"device_id": dev_id},
+                )
+        except Exception as e:
+            _LOGGER.debug("Fehler beim Verarbeiten des MQTT-Connect-Events: %s", e)
+
+    async def _on_mqtt_disconnected_event(self, event: Any) -> None:
+        """Reagiere auf MQTT-Disconnect: UI-Update triggern (Entities können unavailable werden)."""
+        try:
+            self.async_set_updated_data(self._sensor_data)
+            # Pro Gerät Logbuch-Ereignis mit entity_id
+            device_ids: List[str] = list({*self.selected_devices, *self.selected_median_entities, *self._sensor_data.keys()})
+            for dev_id in device_ids:
+                ent_id = self._find_representative_entity_id(dev_id)
+                self.hass.bus.async_fire(
+                    EVENT_MQTT_DISCONNECTED,
+                    {"device_id": dev_id, "entity_id": ent_id} if ent_id else {"device_id": dev_id},
+                )
+        except Exception as e:
+            _LOGGER.debug("Fehler beim Verarbeiten des MQTT-Disconnect-Events: %s", e)
+
+    def get_device_last_seen(self, device_id: str) -> Optional[float]:
+        """Gibt den Last-Seen Zeitstempel (monotonic seconds) für ein Gerät zurück."""
+        return self._device_last_seen.get(device_id)
+
+    def get_stale_after_seconds(self) -> int:
+        """Gibt den Stale-Threshold in Sekunden zurück."""
+        return self._stale_after_seconds
+
+    def _find_representative_entity_id(self, device_id: str) -> Optional[str]:
+        """Findet eine beliebige Entity-ID, die zu einem Gerät gehört."""
+        try:
+            # Bevorzugt echte HA-Entity-IDs, die sich registriert haben
+            ids = self._ha_entity_ids_by_device.get(device_id)
+            if ids:
+                for ent_id in ids:
+                    return ent_id
+            for ent_id, ent in self._entities.items():
+                if ent.get("device_id") == device_id:
+                    return ent_id
+        except Exception:
+            pass
+        return None
+
+    def register_ha_entity_for_device(self, device_id: str, entity_id: str) -> None:
+        """Registriert die echte HA-Entity-ID für ein Gerät (für Logbuch-Zuordnung)."""
+        try:
+            if device_id not in self._ha_entity_ids_by_device:
+                self._ha_entity_ids_by_device[device_id] = set()
+            self._ha_entity_ids_by_device[device_id].add(entity_id)
+        except Exception:
+            pass
     
     async def _setup_mqtt_topics(self) -> None:
         """Richtet MQTT-Topics ein."""

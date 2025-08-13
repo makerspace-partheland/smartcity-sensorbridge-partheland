@@ -1,6 +1,10 @@
 {
   "mqtt_config": {
     "broker_url": "wss://mqtt.makerspace-partheland.de:443/mqtt",
+    "keepalive": 45,
+    "reconnect_min_delay": 1,
+    "reconnect_max_delay": 30,
+    "initial_reconnect_delay": 3,
     "topics": [
       {
         "topic": "senseBox:home/+",
