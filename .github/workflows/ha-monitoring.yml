@@ -45,7 +45,7 @@ jobs:
 
       - name: Commit state update (if changed)
         if: steps.timecheck.outputs.should_run == 'true'
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v6
         with:
           commit_message: "ha: record processed Home Assistant release"
           file_pattern: .github/ha_release_state.json
