@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Time guard (only run at 05:00 Europe/Berlin on schedule)
         if: github.event_name == 'schedule'
