@@ -84,9 +84,9 @@ jobs:
           export PYTHONPATH="${GITHUB_WORKSPACE}:${PYTHONPATH}"
           echo "PYTHONPATH: $PYTHONPATH"
           
-          # Basis-Tests durchführen
+          # Basis-Tests durchführen  
           set +e
-          pytest -v --tb=short -k "not slow" --disable-warnings
+          python -m pytest -v --tb=short -k "not slow" --disable-warnings --strict-markers
           TEST_RESULT=$?
           set -e
           

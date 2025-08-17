@@ -14,7 +14,7 @@ flake8>=6.0.0
 
 # Home Assistant specific
 homeassistant>=2025.7.4; python_version>='3.13'
-pytest-homeassistant-custom-component>=0.13.0; python_version>='3.13'
+pytest-homeassistant-custom-component>=0.13.271; python_version>='3.13'
 
 # MQTT testing
 paho-mqtt>=2.1.0; python_version>='3.13'

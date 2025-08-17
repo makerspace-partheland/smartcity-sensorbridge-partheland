@@ -37,6 +37,7 @@ def mock_config_service(mocker):
     return instance
 
 
+@pytest.mark.usefixtures("enable_custom_integrations")
 async def test_user_flow_shows_selection_form(hass: HomeAssistant, mock_config_service):
     """Start des Flows zeigt Auswahlformular, wenn noch nichts gewählt ist."""
     result = await hass.config_entries.flow.async_init(
@@ -46,6 +47,7 @@ async def test_user_flow_shows_selection_form(hass: HomeAssistant, mock_config_s
     assert result["step_id"] == "device_selection"
 
 
+@pytest.mark.usefixtures("enable_custom_integrations")
 async def test_user_flow_abort_if_already_configured(hass: HomeAssistant, mock_config_service):
     """Ein zweiter Start sollte abbrechen, wenn bereits ein Eintrag existiert."""
     entry = config_entries.ConfigEntry(
@@ -64,6 +66,7 @@ async def test_user_flow_abort_if_already_configured(hass: HomeAssistant, mock_c
     assert result["type"] == FlowResultType.ABORT
 
 
+@pytest.mark.usefixtures("enable_custom_integrations")
 async def test_user_flow_create_entry(hass: HomeAssistant, mock_config_service):
     """Erstellen eines Eintrags nach Auswahl von Geräten/Median-Entities."""
     # Start
@@ -86,6 +89,7 @@ async def test_user_flow_create_entry(hass: HomeAssistant, mock_config_service):
     assert result2["data"][CONF_SELECTED_MEDIAN_ENTITIES] == ["Median_Naunhof"]
 
 
+@pytest.mark.usefixtures("enable_custom_integrations")
 async def test_options_flow_sync_entry(hass: HomeAssistant, mock_config_service):
     """Optionsflow startet synchron (kein Coroutine) und aktualisiert den Eintrag."""
     entry = config_entries.ConfigEntry(
@@ -118,6 +122,7 @@ async def test_options_flow_sync_entry(hass: HomeAssistant, mock_config_service)
     assert updated.data[CONF_SELECTED_MEDIAN_ENTITIES] == ["Median_Naunhof"]
 
 
+@pytest.mark.usefixtures("enable_custom_integrations")
 async def test_http_config_flow_happy_path(hass: HomeAssistant, hass_client, mock_config_service):
     """HTTP-API: Start und Abschluss des Config Flows wie die UI es tut."""
     client = await hass_client()
@@ -148,6 +153,7 @@ async def test_http_config_flow_happy_path(hass: HomeAssistant, hass_client, moc
     assert data2["title"] == NAME
 
 
+@pytest.mark.usefixtures("enable_custom_integrations")
 async def test_http_config_flow_validation_no_selection(hass: HomeAssistant, hass_client, mock_config_service):
     """HTTP-API: Validierung greift bei leerer Auswahl (Fehler im Formular)."""
     client = await hass_client()
@@ -168,6 +174,7 @@ async def test_http_config_flow_validation_no_selection(hass: HomeAssistant, has
     assert data2.get("errors", {}).get("base")
 
 
+@pytest.mark.usefixtures("enable_custom_integrations")
 async def test_http_options_flow_happy_path(hass: HomeAssistant, hass_client, mock_config_service):
     """HTTP-API: Start und Abschluss des Optionsflows (spiegelt UI)."""
     # Vorhandenen Entry anlegen
