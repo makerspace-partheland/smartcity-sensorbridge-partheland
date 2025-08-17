@@ -8,8 +8,9 @@ sys.path.insert(0, str(project_root))
 
 import pytest
 
-# Import all fixtures from pytest-homeassistant-custom-component
 pytest_plugins = "pytest_homeassistant_custom_component"
 
-# Note: enable_custom_integrations will be used per test as needed
-# No autouse fixture to avoid async_generator issues
+@pytest.fixture(autouse=True)
+def auto_enable_custom_integrations(enable_custom_integrations):
+    """Automatically enable custom integrations for all tests."""
+    yield
