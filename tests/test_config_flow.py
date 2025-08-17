@@ -18,7 +18,7 @@ from custom_components.sensorbridge_partheland.const import (
 def mock_config_service(mocker):
     """Mock für ConfigService mit deterministischen Antworten."""
     mock = mocker.patch(
-        "custom_components.sensorbridge_partheland.config_flow.ConfigService",
+        "custom_components.sensorbridge_partheland.config_service.ConfigService",
         autospec=True,
     )
     instance = mock.return_value
