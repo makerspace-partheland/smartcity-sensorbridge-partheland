@@ -40,7 +40,7 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}")
           
           # Extrahiere HA-Version aus Titel (z.B. "New Home Assistant Release: 2025.8.1")
-          HA_VERSION=$(echo "$ISSUE_DATA" | jq -r '.title' | grep -oP 'Release: \K[\d.]+' || echo "")
+          HA_VERSION=$(echo "$ISSUE_DATA" | jq -r '.title | split(": ")[1] // empty')
           
           if [ -z "$HA_VERSION" ]; then
             echo "❌ Keine HA-Version im Issue-Titel gefunden"
