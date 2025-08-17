@@ -102,15 +102,18 @@ jobs:
           TEST_SUMMARY="${{ steps.tests.outputs.test_summary }}"
           
           # Kommentar-Body erstellen
-          COMMENT_BODY="## 🤖 Automatischer Kompatibilitätstest
-          
+          COMMENT_BODY=$(cat << 'EOF'
+## 🤖 Automatischer Kompatibilitätstest
+
 **Home Assistant Version:** ${HA_VERSION}
 **Test-Ergebnis:** ${TEST_STATUS}
 **Zusammenfassung:** ${TEST_SUMMARY}
 **Workflow:** [Siehe Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
 ---
-*Automatisch ausgeführt durch GitHub Actions*"
+*Automatisch ausgeführt durch GitHub Actions*
+EOF
+)
           
           # Kommentar zum Issue hinzufügen
           curl -X POST \
