@@ -1,20 +1,21 @@
 # Minimal test requirements for SmartCity SensorBridge Partheland
-# Based on Home Assistant development testing standards
+# Based on pytest-homeassistant-custom-component requirements_test.txt
 
-# Core testing framework
-pytest>=7.0.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.0.0
-pytest-mock>=3.10.0
+# Core testing framework (exact versions from original)
+pytest==8.4.1
+pytest-asyncio==1.1.0
+pytest-cov==6.2.1
+pytest-timeout==2.4.0
+freezegun==1.5.2
 
-# Code quality
+# Code quality  
 black>=23.0.0
 isort>=5.12.0
 flake8>=6.0.0
 
-# Home Assistant specific
-homeassistant>=2025.7.4; python_version>='3.13'
-pytest-homeassistant-custom-component>=0.13.271; python_version>='3.13'
+# Home Assistant specific 
+homeassistant>=2025.7.4
+pytest-homeassistant-custom-component>=0.13.271
 
 # MQTT testing
 paho-mqtt>=2.1.0; python_version>='3.13'
