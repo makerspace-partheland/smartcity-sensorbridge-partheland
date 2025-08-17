@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: 'Issue number to test'
+        description: 'Issue number to test without #'
         required: true
         type: number
 
@@ -60,23 +60,33 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           
-          # Installiere Requirements
+          # Installiere Test-Requirements
           if [ -f requirements_test.txt ]; then
+            echo "📦 Installiere Test-Dependencies aus requirements_test.txt"
             pip install -r requirements_test.txt
+          else
+            echo "⚠️ requirements_test.txt nicht gefunden, installiere pytest direkt"
+            pip install pytest pytest-asyncio pytest-mock
           fi
           
-          # Installiere spezifische HA-Version
+          # Installiere spezifische HA-Version (überschreibt die Version aus requirements)
           echo "📦 Installiere Home Assistant ${{ steps.issue-info.outputs.ha_version }}"
-          pip install "homeassistant==${{ steps.issue-info.outputs.ha_version }}"
+          pip install "homeassistant==${{ steps.issue-info.outputs.ha_version }}" --force-reinstall
 
       - name: Run compatibility tests
         id: tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           echo "🧪 Führe Kompatibilitätstests mit HA ${{ steps.issue-info.outputs.ha_version }} aus"
           
+          # Python Path setzen für custom_components Import
+          export PYTHONPATH="${GITHUB_WORKSPACE}:${PYTHONPATH}"
+          echo "PYTHONPATH: $PYTHONPATH"
+          
           # Basis-Tests durchführen
           set +e
-          pytest tests/ -v --tb=short -k "not slow"
+          pytest -v --tb=short -k "not slow" --disable-warnings
           TEST_RESULT=$?
           set -e
           
