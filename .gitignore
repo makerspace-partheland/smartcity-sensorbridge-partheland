@@ -74,8 +74,8 @@ config/
 # Project specific development files
 logs.txt
 .bmad-core/
-tests/
-requirements_test*.txt
+requirements_test_all.txt
+scripts/
 pyproject.toml
 pytest.ini
 mypy.ini
