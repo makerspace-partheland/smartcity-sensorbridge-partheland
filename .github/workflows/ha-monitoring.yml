@@ -2,9 +2,10 @@ name: Home Assistant Release Monitoring
 
 on:
   schedule:
-    # Zwei Zeiten für CET/CEST; Guard stellt auf 05:00 Europe/Berlin sicher
-    - cron: '0 3 * * 5' # Freitags 03:00 UTC (05:00 CET)
-    - cron: '0 4 * * 5' # Freitags 04:00 UTC (05:00 CEST)
+    # Freitag 09:00 deutsche Zeit (mehr Zeit für API-Propagation)
+    - cron: '0 7 * * 5' # Freitag 07:00 UTC (09:00 CET/CEST)
+    # Samstag 09:00 deutsche Zeit (Fallback für verpasste Releases)
+    - cron: '0 7 * * 6' # Samstag 07:00 UTC (09:00 CET/CEST)
   workflow_dispatch:
 
 permissions:
@@ -18,15 +19,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Time guard (run only at 05:00 Europe/Berlin)
+      - name: Time guard (run at 09:00 German time, Fri+Sat or manual)
         id: timecheck
         run: |
-          HOUR=$(TZ=Europe/Berlin date +'%H')
-          echo "Local hour in Europe/Berlin: $HOUR"
-          if [ "$HOUR" = "05" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "🔧 Manual workflow dispatch - running immediately"
           else
-            echo "should_run=false" >> $GITHUB_OUTPUT
+            HOUR=$(TZ=Europe/Berlin date +'%H')
+            DAY=$(TZ=Europe/Berlin date +'%u')  # 5=Freitag, 6=Samstag
+            echo "Local hour in Europe/Berlin: $HOUR, Day: $DAY"
+            if [ "$HOUR" = "09" ] && ([ "$DAY" = "5" ] || [ "$DAY" = "6" ]); then
+              echo "should_run=true" >> $GITHUB_OUTPUT
+              echo "✅ Running HA monitoring at optimal time"
+            else
+              echo "should_run=false" >> $GITHUB_OUTPUT
+              echo "⏰ Not the scheduled time for HA monitoring"
+            fi
           fi
 
       - name: Set up Python

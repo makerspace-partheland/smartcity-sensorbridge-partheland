@@ -1,0 +1,140 @@
+name: HA Compatibility Check
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to test'
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compatibility-test:
+    # Nur für HA-Release-Issues ausführen
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'home-assistant')) ||
+      (github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        
+      - name: Get Issue Information
+        id: issue-info
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ISSUE_NUMBER="${{ github.event.inputs.issue_number }}"
+          else
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
+          fi
+          
+          # Hole Issue-Details via GitHub API
+          ISSUE_DATA=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}")
+          
+          # Extrahiere HA-Version aus Titel (z.B. "New Home Assistant Release: 2025.8.1")
+          HA_VERSION=$(echo "$ISSUE_DATA" | jq -r '.title' | grep -oP 'Release: \K[\d.]+' || echo "")
+          
+          if [ -z "$HA_VERSION" ]; then
+            echo "❌ Keine HA-Version im Issue-Titel gefunden"
+            exit 1
+          fi
+          
+          echo "issue_number=${ISSUE_NUMBER}" >> $GITHUB_OUTPUT
+          echo "ha_version=${HA_VERSION}" >> $GITHUB_OUTPUT
+          echo "✅ Erkannte HA-Version: ${HA_VERSION}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.2'
+
+      - name: Install dependencies and HA version
+        run: |
+          python -m pip install --upgrade pip
+          
+          # Installiere Requirements
+          if [ -f requirements_test.txt ]; then
+            pip install -r requirements_test.txt
+          fi
+          
+          # Installiere spezifische HA-Version
+          echo "📦 Installiere Home Assistant ${{ steps.issue-info.outputs.ha_version }}"
+          pip install "homeassistant==${{ steps.issue-info.outputs.ha_version }}"
+
+      - name: Run compatibility tests
+        id: tests
+        run: |
+          echo "🧪 Führe Kompatibilitätstests mit HA ${{ steps.issue-info.outputs.ha_version }} aus"
+          
+          # Basis-Tests durchführen
+          set +e
+          pytest tests/ -v --tb=short -k "not slow"
+          TEST_RESULT=$?
+          set -e
+          
+          if [ $TEST_RESULT -eq 0 ]; then
+            echo "test_status=✅ success" >> $GITHUB_OUTPUT
+            echo "test_summary=Alle Tests erfolgreich" >> $GITHUB_OUTPUT
+          elif [ $TEST_RESULT -eq 5 ]; then
+            # Keine Tests gefunden
+            echo "test_status=⚠️ no-tests" >> $GITHUB_OUTPUT
+            echo "test_summary=Keine Tests gefunden" >> $GITHUB_OUTPUT
+          else
+            echo "test_status=❌ failed" >> $GITHUB_OUTPUT
+            echo "test_summary=Tests fehlgeschlagen" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Update Issue with test results
+        if: always()
+        run: |
+          ISSUE_NUMBER="${{ steps.issue-info.outputs.issue_number }}"
+          HA_VERSION="${{ steps.issue-info.outputs.ha_version }}"
+          TEST_STATUS="${{ steps.tests.outputs.test_status }}"
+          TEST_SUMMARY="${{ steps.tests.outputs.test_summary }}"
+          
+          # Kommentar-Body erstellen
+          COMMENT_BODY="## 🤖 Automatischer Kompatibilitätstest
+          
+**Home Assistant Version:** ${HA_VERSION}
+**Test-Ergebnis:** ${TEST_STATUS}
+**Zusammenfassung:** ${TEST_SUMMARY}
+**Workflow:** [Siehe Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+---
+*Automatisch ausgeführt durch GitHub Actions*"
+          
+          # Kommentar zum Issue hinzufügen
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
+            -d "{\"body\": $(echo "$COMMENT_BODY" | jq -Rs .)}"
+          
+          # Bei Erfolg: Checkbox im Issue abhaken
+          if [ "$TEST_STATUS" = "✅ success" ] || [ "$TEST_STATUS" = "⚠️ no-tests" ]; then
+            echo "✅ Aktualisiere Issue-Checkboxes"
+            
+            # Hole aktuellen Issue-Body
+            ISSUE_BODY=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" | \
+              jq -r '.body')
+            
+            # Ersetze erste Checkbox
+            UPDATED_BODY=$(echo "$ISSUE_BODY" | sed 's/- \[ \] Test with new Home Assistant version/- [x] Test with new Home Assistant version/')
+            
+            # Update Issue
+            curl -X PATCH \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" \
+              -d "{\"body\": $(echo "$UPDATED_BODY" | jq -Rs .)}"
+          fi
