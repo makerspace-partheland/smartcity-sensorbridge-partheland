@@ -962,6 +962,8 @@
       "specialized": "1h"
     },
     "per_device": {
+      "LDDS75_Naunhof_1": "1h30m",
+      "LDDS75_Naunhof_2": "1h30m"
     }
   }
 } 
