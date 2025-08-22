@@ -14,6 +14,7 @@ def pytest_configure(config):
     """Configure pytest for Home Assistant custom component testing."""
     # Set asyncio mode to auto for pytest-homeassistant-custom-component
     config.option.asyncio_mode = "auto"
+    config.option.asyncio_default_fixture_loop_scope = "function"
 
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
@@ -23,3 +24,4 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     'async_generator object has no attribute data' error.
     """
     yield
+
