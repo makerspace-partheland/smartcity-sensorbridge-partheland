@@ -96,8 +96,9 @@ class MQTTService(MQTTServiceProtocol):
             if self._broker_url.startswith("wss://"):
                 self._ssl_context = await self.hass.async_add_executor_job(self._create_ssl_context)
             
-            # MQTT Client erstellen
+            # MQTT Client erstellen (Callback API Version 2)
             self.client = mqtt.Client(
+                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
                 client_id=self._client_id,
                 protocol=mqtt.MQTTv311 if MQTT_VERSION == 4 else mqtt.MQTTv5,
                 transport="websockets"
@@ -279,61 +280,65 @@ class MQTTService(MQTTServiceProtocol):
     def is_connected(self) -> bool:
         """Gibt zurück ob die MQTT-Verbindung aktiv ist."""
         return self._connected
-    
-    def _on_connect(self, client: mqtt.Client, userdata: Any, flags: Dict, rc: int) -> None:
-        """Callback für MQTT-Verbindung."""
-        if rc == 0:
+
+    def _on_connect(self, client: mqtt.Client, userdata: Any, flags: Dict, reason_code, properties=None) -> None:
+        """Callback für MQTT-Verbindung (API Version 2)."""
+        if reason_code == 0:
             self._connected = True
             _LOGGER.info("MQTT-Verbindung erfolgreich hergestellt")
-            
+
             # Thread-sicher: Event in Queue einreihen über Event Loop
             self.hass.loop.call_soon_threadsafe(
                 self._queue_event, "connect", None
             )
         else:
             self._connected = False
+            # Neue API verwendet ReasonCode-Objekte statt Integer-Codes
+            reason_code_value = int(reason_code) if hasattr(reason_code, '__int__') else reason_code
             error_messages = {
                 1: "Unacceptable protocol version",
-                2: "Identifier rejected", 
+                2: "Identifier rejected",
                 3: "Server unavailable",
                 4: "Bad username or password",
                 5: "Not authorized"
             }
-            error_msg = error_messages.get(rc, f"Unknown error code: {rc}")
-            _LOGGER.error("MQTT-Verbindung fehlgeschlagen: %s (Code: %d)", error_msg, rc)
-            
+            error_msg = error_messages.get(reason_code_value, f"Unknown error code: {reason_code_value}")
+            _LOGGER.error("MQTT-Verbindung fehlgeschlagen: %s (Code: %s)", error_msg, reason_code_value)
+
             # Bei WebSocket-Verbindung zusätzliche Debug-Info
             if self._broker_url and self._broker_url.startswith("wss://"):
-                _LOGGER.error("WebSocket-Verbindung fehlgeschlagen. Prüfe URL: %s, Pfad: %s", 
+                _LOGGER.error("WebSocket-Verbindung fehlgeschlagen. Prüfe URL: %s, Pfad: %s",
                             self._broker_url, self._ws_path)
-                if rc == 2:  # Identifier rejected
+                if reason_code_value == 2:  # Identifier rejected
                     _LOGGER.error("Client-ID möglicherweise bereits in Verwendung - generiere neue ID")
                     # Neue Client-ID generieren für nächsten Versuch
                     self._client_id = f"{CLIENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
     
-    def _on_disconnect(self, client: mqtt.Client, userdata: Any, rc: int) -> None:
-        """Callback für MQTT-Trennung."""
+    def _on_disconnect(self, client: mqtt.Client, userdata: Any, flags, reason_code, properties=None) -> None:
+        """Callback für MQTT-Trennung (API Version 2)."""
         self._connected = False
         # Freundlichere Fehlermeldung für gängige Gründe
-        if rc == 0:
+        if reason_code == 0:
             _LOGGER.info("MQTT-Verbindung ordnungsgemäß getrennt")
         else:
+            # Neue API verwendet ReasonCode-Objekte statt Integer-Codes
+            reason_code_value = int(reason_code) if hasattr(reason_code, '__int__') else reason_code
             reason_map = {
                 getattr(mqtt, "MQTT_ERR_CONN_LOST", 7): "Verbindung verloren",
                 getattr(mqtt, "MQTT_ERR_NO_CONN", 4): "Keine Verbindung",
                 getattr(mqtt, "MQTT_ERR_PROTOCOL", 2): "Protokollfehler",
                 getattr(mqtt, "MQTT_ERR_INVAL", 3): "Ungültiger Zustand",
             }
-            msg = reason_map.get(rc, f"RC: {rc}")
+            msg = reason_map.get(reason_code_value, f"RC: {reason_code_value}")
             _LOGGER.warning("MQTT-Verbindung unerwartet getrennt (%s)", msg)
         
         # Thread-sicher: Event in Queue einreihen über Event Loop
         self.hass.loop.call_soon_threadsafe(
-            self._queue_event, "disconnect", rc
+            self._queue_event, "disconnect", reason_code
         )
         
         # Reconnect nur bei unerwarteter Trennung starten
-        if rc != 0:
+        if reason_code != 0:
             self.hass.loop.call_soon_threadsafe(self._start_reconnect_thread_safe)
     
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
