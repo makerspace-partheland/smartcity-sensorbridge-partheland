@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: 'Issue number to test without #'
+        description: 'Issue-Nummer zum Testen ohne #'
         required: true
         type: number
 
@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout
+      - name: Repository auschecken
         uses: actions/checkout@v5
         
-      - name: Get Issue Information
+      - name: Issue-Informationen abrufen
         id: issue-info
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -51,12 +51,12 @@ jobs:
           echo "ha_version=${HA_VERSION}" >> $GITHUB_OUTPUT
           echo "✅ Erkannte HA-Version: ${HA_VERSION}"
 
-      - name: Set up Python
+      - name: Python einrichten
         uses: actions/setup-python@v5
         with:
           python-version: '3.13.2'
 
-      - name: Install dependencies and HA version
+      - name: Dependencies und HA-Version installieren
         run: |
           python -m pip install --upgrade pip
           
@@ -73,7 +73,7 @@ jobs:
           echo "Installiere Home Assistant ${{ steps.issue-info.outputs.ha_version }}"
           pip install "homeassistant==${{ steps.issue-info.outputs.ha_version }}" --force-reinstall
 
-      - name: Run compatibility tests
+      - name: Kompatibilitätstests ausführen
         id: tests
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -103,7 +103,7 @@ jobs:
             exit 1
           fi
 
-      - name: Update Issue with test results
+      - name: Issue mit Testergebnissen aktualisieren
         if: always()
         env:
           ISSUE_NUMBER: ${{ steps.issue-info.outputs.issue_number }}
@@ -139,7 +139,7 @@ jobs:
             ISSUE_BODY=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" | jq -r '.body')
 
-            UPDATED_BODY=$(echo "$ISSUE_BODY" | sed 's/- \[ \] Test with new Home Assistant version/- [x] Test with new Home Assistant version/')
+            UPDATED_BODY=$(echo "$ISSUE_BODY" | sed 's/- \[ \] Mit neuer Home Assistant Version testen/- [x] Mit neuer Home Assistant Version testen/')
 
             curl -sS -X PATCH \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \

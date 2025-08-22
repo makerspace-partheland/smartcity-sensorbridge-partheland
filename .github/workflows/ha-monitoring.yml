@@ -19,32 +19,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Time guard (run at 09:00 German time, Fri+Sat or manual)
+      - name: Zeitgesteuerte Ausführung (09:00 deutsche Zeit, Fr+Sa oder manuell)
         id: timecheck
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "🔧 Manual workflow dispatch - running immediately"
+            echo "🔧 Manueller Workflow-Aufruf - starte sofort"
           else
             HOUR=$(TZ=Europe/Berlin date +'%H')
             DAY=$(TZ=Europe/Berlin date +'%u')  # 5=Freitag, 6=Samstag
-            echo "Local hour in Europe/Berlin: $HOUR, Day: $DAY"
+            echo "Lokale Uhrzeit in Europa/Berlin: $HOUR, Tag: $DAY"
             if [ "$HOUR" = "09" ] && ([ "$DAY" = "5" ] || [ "$DAY" = "6" ]); then
               echo "should_run=true" >> $GITHUB_OUTPUT
-              echo "✅ Running HA monitoring at optimal time"
+              echo "✅ Führe HA-Überwachung zur optimalen Zeit aus"
             else
               echo "should_run=false" >> $GITHUB_OUTPUT
-              echo "⏰ Not the scheduled time for HA monitoring"
+              echo "⏰ Nicht die geplante Zeit für HA-Überwachung"
             fi
           fi
 
-      - name: Set up Python
+      - name: Python einrichten
         uses: actions/setup-python@v5
         with:
           python-version: '3.13.2'
         if: steps.timecheck.outputs.should_run == 'true'
 
-      - name: Run HA release check
+      - name: HA Release-Überprüfung ausführen
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -52,11 +52,11 @@ jobs:
         run: |
           python .github/scripts/check_ha_releases.py
 
-      - name: Commit state update (if changed)
+      - name: Status-Update committen (falls geändert)
         if: steps.timecheck.outputs.should_run == 'true'
         uses: stefanzweifel/git-auto-commit-action@v6
         with:
-          commit_message: "ha: record processed Home Assistant release"
+          commit_message: "ha: verarbeitete Home Assistant Version aufgezeichnet"
           file_pattern: .github/ha_release_state.json
 
 

@@ -1,4 +1,4 @@
-name: Weekly Dependency Update (pip + manifest)
+name: Wöchentliche Abhängigkeitsaktualisierung (pip + manifest)
 
 on:
   schedule:
@@ -15,42 +15,42 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Repository auschecken
         uses: actions/checkout@v5
 
-      - name: Time guard (run only at 05:00 Europe/Berlin)
+      - name: Zeitgesteuerte Ausführung (nur 05:00 Europa/Berlin)
         id: timecheck
         run: |
           HOUR=$(TZ=Europe/Berlin date +'%H')
-          echo "Local hour in Europe/Berlin: $HOUR"
+          echo "Lokale Uhrzeit in Europa/Berlin: $HOUR"
           if [ "$HOUR" = "05" ]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Set up Python
+      - name: Python einrichten
         uses: actions/setup-python@v5
         with:
           python-version: '3.13.2'
         if: steps.timecheck.outputs.should_run == 'true'
 
-      - name: Update requirements (patch/minor only)
+      - name: Requirements aktualisieren (nur patch/minor)
         if: steps.timecheck.outputs.should_run == 'true'
         run: |
           python .github/scripts/update_requirements.py
 
-      - name: Create Pull Request
+      - name: Pull Request erstellen
         if: steps.timecheck.outputs.should_run == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
           commit-message: |
-            deps: weekly dependency updates (patch/minor)
-          title: "deps: weekly dependency updates (patch/minor)"
+            deps: wöchentliche Abhängigkeitsaktualisierungen (patch/minor)
+          title: "deps: wöchentliche Abhängigkeitsaktualisierungen (patch/minor)"
           body: |
-            Automated weekly dependency update for pip requirements and manifest.
-            - Applies only patch/minor updates
-            - Skips major updates and sensitive packages' majors
+            Automatisierte wöchentliche Abhängigkeitsaktualisierung für pip-Requirements und manifest.
+            - Wendet nur patch/minor Updates an
+            - Überspringt Major-Updates und Major-Updates sensibler Pakete
           labels: dependencies, python
           branch: chore/weekly-deps-update
           delete-branch: true

@@ -1,4 +1,4 @@
-name: Auto-Merge Weekly Deps PR (Patch/Minor)
+name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
 
 on:
   pull_request_target:
@@ -13,12 +13,12 @@ jobs:
     if: github.actor == 'github-actions[bot]' && github.event.pull_request.head.ref == 'chore/weekly-deps-update'
     runs-on: ubuntu-latest
     steps:
-      - name: Auto-approve weekly deps PR
+      - name: Wöchentlichen Deps PR automatisch genehmigen
         uses: hmarr/auto-approve-action@v4
         with:
-          review-message: "Auto-approve weekly patch/minor dependency update"
+          review-message: "Automatische Genehmigung wöchentlicher patch/minor Abhängigkeitsaktualisierung"
 
-      - name: Enable auto-merge (squash)
+      - name: Auto-Merge aktivieren (squash)
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

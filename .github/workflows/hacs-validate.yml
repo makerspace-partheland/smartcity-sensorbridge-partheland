@@ -13,22 +13,22 @@ jobs:
   validate-hacs:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Repository auschecken
         uses: actions/checkout@v5
 
-      - name: Time guard (only run at 05:00 Europe/Berlin on schedule)
+      - name: Zeitgesteuerte Ausführung (nur 05:00 Europa/Berlin bei Zeitplan)
         if: github.event_name == 'schedule'
         id: timecheck
         run: |
           HOUR=$(TZ=Europe/Berlin date +'%H')
-          echo "Local hour in Europe/Berlin: $HOUR"
+          echo "Lokale Uhrzeit in Europa/Berlin: $HOUR"
           if [ "$HOUR" = "05" ]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: HACS validation
+      - name: HACS-Validierung
         if: ${{ github.event_name != 'schedule' || (github.event_name == 'schedule' && steps.timecheck.outputs.should_run == 'true') }}
         uses: hacs/action@main
         with:
