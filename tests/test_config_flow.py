@@ -138,19 +138,15 @@ async def test_user_flow_abort_if_already_configured(hass: HomeAssistant, mock_c
     """Ein zweiter Start sollte abbrechen, wenn bereits ein Eintrag existiert."""
     mock_integration_setup(hass)
     
-    entry = config_entries.ConfigEntry(
-        version=1,
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    
+    entry = MockConfigEntry(
         domain=DOMAIN,
         title=NAME,
         data={CONF_SELECTED_DEVICES: [], CONF_SELECTED_MEDIAN_ENTITIES: []},
-        source=config_entries.SOURCE_USER,
-        entry_id="test",
-        discovery_keys=[],
-        minor_version=1,
-        options={},
         unique_id="test_unique_id",
     )
-    await hass.config_entries.async_add(entry)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -184,19 +180,16 @@ async def test_options_flow_sync_entry(hass: HomeAssistant, mock_config_service,
     """Optionsflow startet synchron (kein Coroutine) und aktualisiert den Eintrag."""
     mock_integration_setup(hass)
     
-    entry = config_entries.ConfigEntry(
-        version=1,
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    
+    entry = MockConfigEntry(
         domain=DOMAIN,
         title=NAME,
         data={CONF_SELECTED_DEVICES: ["Naunhof_Nr1"], CONF_SELECTED_MEDIAN_ENTITIES: []},
-        source=config_entries.SOURCE_USER,
-        entry_id="test2",
-        discovery_keys=[],
-        minor_version=1,
-        options={},
         unique_id="test2_unique_id",
+        entry_id="test2",
     )
-    await hass.config_entries.async_add(entry)
+    entry.add_to_hass(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] == FlowResultType.FORM
