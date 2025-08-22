@@ -62,15 +62,15 @@ jobs:
           
           # Installiere Test-Requirements
           if [ -f requirements_test.txt ]; then
-            echo "📦 Installiere Test-Dependencies aus requirements_test.txt"
+            echo "Installiere Test-Dependencies aus requirements_test.txt"
             pip install -r requirements_test.txt
           else
-            echo "⚠️ requirements_test.txt nicht gefunden, installiere pytest direkt"
+            echo "requirements_test.txt nicht gefunden, installiere pytest direkt"
             pip install pytest pytest-asyncio pytest-mock
           fi
           
           # Installiere spezifische HA-Version (überschreibt die Version aus requirements)
-          echo "📦 Installiere Home Assistant ${{ steps.issue-info.outputs.ha_version }}"
+          echo "Installiere Home Assistant ${{ steps.issue-info.outputs.ha_version }}"
           pip install "homeassistant==${{ steps.issue-info.outputs.ha_version }}" --force-reinstall
 
       - name: Run compatibility tests
@@ -78,7 +78,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          echo "🧪 Führe Kompatibilitätstests mit HA ${{ steps.issue-info.outputs.ha_version }} aus"
+          echo "Führe Kompatibilitätstests mit HA ${{ steps.issue-info.outputs.ha_version }} aus"
           
           # Python Path setzen für custom_components Import
           export PYTHONPATH="${GITHUB_WORKSPACE}:${PYTHONPATH}"
@@ -105,38 +105,45 @@ jobs:
 
       - name: Update Issue with test results
         if: always()
+        env:
+          ISSUE_NUMBER: ${{ steps.issue-info.outputs.issue_number }}
+          HA_VERSION: ${{ steps.issue-info.outputs.ha_version }}
+          TEST_STATUS: ${{ steps.tests.outputs.test_status }}
+          TEST_SUMMARY: ${{ steps.tests.outputs.test_summary }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          ISSUE_NUMBER="${{ steps.issue-info.outputs.issue_number }}"
-          HA_VERSION="${{ steps.issue-info.outputs.ha_version }}"
-          TEST_STATUS="${{ steps.tests.outputs.test_status }}"
-          TEST_SUMMARY="${{ steps.tests.outputs.test_summary }}"
-          
-          # Kommentar-Body erstellen (einfacher String)
-          COMMENT_BODY="## 🤖 Automatischer Kompatibilitätstest\n\n**Home Assistant Version:** ${HA_VERSION}\n**Test-Ergebnis:** ${TEST_STATUS}\n**Zusammenfassung:** ${TEST_SUMMARY}\n**Workflow:** [Siehe Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n*Automatisch ausgeführt durch GitHub Actions*"
-          
-          # Kommentar zum Issue hinzufügen
-          curl -X POST \
+          # Mehrzeiligen Kommentar-Body per Here-Doc erzeugen (echte Zeilenumbrüche)
+          COMMENT_BODY=$(cat <<EOF
+          ## Automatischer Kompatibilitätstest
+
+          **Home Assistant Version:** ${HA_VERSION}
+          **Test-Ergebnis:** ${TEST_STATUS}
+          **Zusammenfassung:** ${TEST_SUMMARY}
+          **Workflow:** [Siehe Details](${WORKFLOW_URL})
+
+          ---
+          *Automatisch ausgeführt durch GitHub Actions*
+          EOF
+          )
+
+          # Kommentar posten (JSON sauber mit jq bauen)
+          curl -sS -X POST \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
-            -d "{\"body\": $(echo "$COMMENT_BODY" | jq -Rs .)}"
-          
+            -d "$(jq -n --arg body "$COMMENT_BODY" '{body:$body}')"
+
           # Bei Erfolg: Checkbox im Issue abhaken
           if [ "$TEST_STATUS" = "✅ success" ] || [ "$TEST_STATUS" = "⚠️ no-tests" ]; then
             echo "✅ Aktualisiere Issue-Checkboxes"
-            
-            # Hole aktuellen Issue-Body
             ISSUE_BODY=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" | \
-              jq -r '.body')
-            
-            # Ersetze erste Checkbox
+              "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" | jq -r '.body')
+
             UPDATED_BODY=$(echo "$ISSUE_BODY" | sed 's/- \[ \] Test with new Home Assistant version/- [x] Test with new Home Assistant version/')
-            
-            # Update Issue
-            curl -X PATCH \
+
+            curl -sS -X PATCH \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" \
-              -d "{\"body\": $(echo "$UPDATED_BODY" | jq -Rs .)}"
+              -d "$(jq -n --arg body "$UPDATED_BODY" '{body:$body}')"
           fi
