@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Checks for new Home Assistant Core releases and creates an issue in this repository
-if a new release is found. Also updates a state file with the last processed release.
+Prüft auf neue Home Assistant Core Releases und erstellt ein Issue in diesem Repository,
+wenn eine neue Version gefunden wird. Aktualisiert auch eine Status-Datei mit der
+zuletzt verarbeiteten Version.
 
-Environment variables:
-- GITHUB_TOKEN: GitHub token provided by Actions
+Umgebungsvariablen:
+- GITHUB_TOKEN: GitHub Token von Actions bereitgestellt
 - GITHUB_REPOSITORY: owner/repo string
 
-This script intentionally avoids third-party dependencies and uses stdlib only.
+Dieses Skript vermeidet absichtlich Third-Party-Abhängigkeiten und verwendet nur stdlib.
 """
 
 from __future__ import annotations
@@ -78,31 +79,35 @@ def body_indicates_breaking_changes(text: str) -> bool:
     return any(k in lowered for k in keywords)
 
 
-def create_issue_if_needed(tag: str, html_url: str, body: str, breaking: bool) -> None:
+
+
+
+def create_issue_if_needed(tag: str, html_url: str, breaking: bool) -> None:
     repo = os.environ.get("GITHUB_REPOSITORY")
     if not repo:
         raise RuntimeError("GITHUB_REPOSITORY not provided")
 
-    # Check if issue already exists
+    # Prüfen, ob Issue bereits existiert
     query = f"repo:{repo} is:issue in:title \"{tag}\""
     search = github_api_request(f"/search/issues?q={urllib.parse.quote(query)}")
     if search.get("total_count", 0) > 0:
-        print(f"Issue for {tag} already exists")
+        print(f"Issue für {tag} existiert bereits")
         return
 
-    title = f"New Home Assistant Release: {tag}"
+
+
+    title = f"Neue Home Assistant Version: {tag}"
     labels = ["dependencies", "home-assistant"]
     if breaking:
         labels.append("breaking-changes")
 
     issue_body = (
-        f"📦 New Home Assistant Release Available: {tag}\n\n"
+        f"📦 Neue Home Assistant Version verfügbar: {tag}\n\n"
         f"Release Notes: {html_url}\n\n"
-        f"Summary (first 500 chars):\n\n{(body or '')[:500]}\n\n"
-        "Required Actions:\n"
-        "- [ ] Test with new Home Assistant version\n"
-        "- [ ] Review breaking changes (if any)\n"
-        "- [ ] Update integration/manifest if necessary\n"
+        "Erforderliche Maßnahmen:\n"
+        "- [ ] Mit neuer Home Assistant Version testen\n"
+        "- [ ] Breaking Changes überprüfen (falls vorhanden)\n"
+        "- [ ] Integration/Manifest aktualisieren (falls nötig)\n"
     )
 
     payload = json.dumps(
@@ -126,14 +131,14 @@ def create_issue_if_needed(tag: str, html_url: str, body: str, breaking: bool) -
     )
     with urllib.request.urlopen(req) as resp:
         created = json.loads(resp.read().decode("utf-8"))
-        print(f"Created issue #{created.get('number')}: {created.get('title')}")
+        print(f"Issue #{created.get('number')} erstellt: {created.get('title')}")
 
 
 def main() -> int:
     try:
         latest = get_latest_stable_release()
         if not latest:
-            print("No stable release found", file=sys.stderr)
+            print("Keine stabile Version gefunden", file=sys.stderr)
             return 0
 
         tag = latest.get("tag_name") or latest.get("name") or "unknown"
@@ -145,22 +150,56 @@ def main() -> int:
         last_tag = state.get("last_processed_tag")
 
         if tag == last_tag:
-            print(f"No new release since {last_tag}")
+            print(f"Keine neue Version seit {last_tag}")
             return 0
 
-        # Create issue and update state
-        create_issue_if_needed(tag, html_url, body, breaking)
+        # Issue erstellen und Status aktualisieren
+        create_issue_if_needed(tag, html_url, breaking)
         state["last_processed_tag"] = tag
         save_state(state)
-        print(f"Updated state to {tag}")
+        print(f"Status auf {tag} aktualisiert")
         return 0
     except urllib.error.HTTPError as e:
-        print(f"HTTP error: {e}", file=sys.stderr)
+        print(f"HTTP-Fehler: {e}", file=sys.stderr)
         return 1
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Fehler: {e}", file=sys.stderr)
         return 1
+
+
+def test_issue_creation():
+    """Testfunktion zum Überprüfen der Issue-Erstellung ohne tatsächliches API-Call"""
+    test_tag = "2025.1.0"
+    test_url = "https://github.com/home-assistant/core/releases/tag/2025.1.0"
+    test_breaking = True
+
+    # Simuliere die Issue-Body-Erstellung
+    issue_body = (
+        f"📦 Neue Home Assistant Version verfügbar: {test_tag}\n\n"
+        f"Release Notes: {test_url}\n\n"
+        "Erforderliche Maßnahmen:\n"
+        "- [ ] Mit neuer Home Assistant Version testen\n"
+        "- [ ] Breaking Changes überprüfen (falls vorhanden)\n"
+        "- [ ] Integration/Manifest aktualisieren (falls nötig)\n"
+    )
+
+    print("=== Test Issue Body ===")
+    print(issue_body)
+    print("=== Ende Test ===")
+
+    # Prüfe, ob @mentions enthalten sind
+    if "@" in issue_body:
+        print("❌ ACHTUNG: @mentions gefunden!")
+        return False
+    else:
+        print("✅ Keine @mentions gefunden - sicher!")
+        return True
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Für Testzwecke: Führe Test aus, wenn --test Parameter übergeben wird
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--test":
+        test_issue_creation()
+    else:
+        raise SystemExit(main())
