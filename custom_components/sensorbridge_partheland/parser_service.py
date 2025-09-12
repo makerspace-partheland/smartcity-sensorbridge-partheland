@@ -396,12 +396,11 @@ class ParserService(ParserServiceProtocol):
     async def _apply_unit_conversion(self, field_name: str, field_value: float) -> float:
         """Wendet Einheitenkonvertierung auf einen Feldwert an, falls konfiguriert."""
         try:
-            # Parsing-Konfiguration laden falls noch nicht vorhanden
-            if not self._parsing_config:
-                self._parsing_config = await self.config_service.get_parsing_config()
+            # Hauptkonfiguration laden
+            config = await self.config_service.load_config()
             
             # Einheitenkonvertierungen aus der Konfiguration laden
-            unit_conversions = self._parsing_config.get("field_mapping", {}).get("unit_conversions", {})
+            unit_conversions = config.get("field_mapping", {}).get("unit_conversions", {})
             
             # Prüfen ob für dieses Feld eine Konvertierung konfiguriert ist
             if field_name in unit_conversions:
