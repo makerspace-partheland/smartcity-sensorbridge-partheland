@@ -172,7 +172,9 @@ class ParserService(ParserServiceProtocol):
                     # Für Median-Topics KEIN Suffix anhängen. Die Entities
                     # werden für die gleichen Feldnamen erzeugt wie bei
                     # Einzelgeräten, nur unter der Median-Geräte-ID.
-                    sensor_data[field_name] = field_value
+                    # Einheitenkonvertierung anwenden falls konfiguriert
+                    converted_value = await self._apply_unit_conversion(field_name, field_value)
+                    sensor_data[field_name] = converted_value
             
             if not sensor_data:
                 return None
@@ -306,7 +308,9 @@ class ParserService(ParserServiceProtocol):
             sensor_data = {}
             for field_name, field_value in fields.items():
                 if isinstance(field_value, (int, float)) and field_name in configured_sensors:
-                    sensor_data[field_name] = field_value
+                    # Einheitenkonvertierung anwenden falls konfiguriert
+                    converted_value = await self._apply_unit_conversion(field_name, field_value)
+                    sensor_data[field_name] = converted_value
             
             if not sensor_data:
                 return None
@@ -387,4 +391,38 @@ class ParserService(ParserServiceProtocol):
         rssi_fields = [k for k in fields.keys() if 'rssi' in k.lower()]
         non_rssi_fields = [k for k in fields.keys() if 'rssi' not in k.lower()]
         
-        return len(rssi_fields) > 0 and len(non_rssi_fields) == 0 
+        return len(rssi_fields) > 0 and len(non_rssi_fields) == 0
+    
+    async def _apply_unit_conversion(self, field_name: str, field_value: float) -> float:
+        """Wendet Einheitenkonvertierung auf einen Feldwert an, falls konfiguriert."""
+        try:
+            # Parsing-Konfiguration laden falls noch nicht vorhanden
+            if not self._parsing_config:
+                self._parsing_config = await self.config_service.get_parsing_config()
+            
+            # Einheitenkonvertierungen aus der Konfiguration laden
+            unit_conversions = self._parsing_config.get("field_mapping", {}).get("unit_conversions", {})
+            
+            # Prüfen ob für dieses Feld eine Konvertierung konfiguriert ist
+            if field_name in unit_conversions:
+                conversion_config = unit_conversions[field_name]
+                conversion_factor = conversion_config.get("conversion_factor", 1.0)
+                from_unit = conversion_config.get("from_unit", "")
+                to_unit = conversion_config.get("to_unit", "")
+                
+                # Konvertierung anwenden
+                converted_value = field_value * conversion_factor
+                
+                _LOGGER.debug(
+                    "Einheitenkonvertierung für %s: %.2f %s -> %.2f %s (Faktor: %.3f)",
+                    field_name, field_value, from_unit, converted_value, to_unit, conversion_factor
+                )
+                
+                return converted_value
+            
+            # Keine Konvertierung konfiguriert, Originalwert zurückgeben
+            return field_value
+            
+        except Exception as e:
+            _LOGGER.error("Fehler bei der Einheitenkonvertierung für %s: %s", field_name, e)
+            return field_value 

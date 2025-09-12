@@ -68,6 +68,13 @@
       "UV-Intensitaet": "W/m²",
       "water_level": "cm"
     },
+    "unit_conversions": {
+      "water_level": {
+        "from_unit": "mm",
+        "to_unit": "cm",
+        "conversion_factor": 0.1
+      }
+    },
     "device_classes": {
       "Temperatur": "TEMPERATURE",
       "GehaeuseTemp": "TEMPERATURE",
