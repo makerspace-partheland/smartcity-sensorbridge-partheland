@@ -1,7 +1,4 @@
-[![HACS Validation](https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/actions/workflows/hacs-validate.yml/badge.svg)](https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/actions/workflows/hacs-validate.yml)[![HA Compatibility Check](https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/actions/workflows/ha-compatibility-check.yml/badge.svg)](https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/actions/workflows/ha-compatibility-check.yml)
 # SmartCity SensorBridge Partheland
-
-Eine einfache Home Assistant Custom Integration für das SmartCity-Netzwerk Partheland, die Umweltdaten von lokalen Sensoren in Ihr Smart Home bringt.
 
 ## Was ist das?
 
@@ -40,7 +37,7 @@ Ausfallsichere Median-Werte für verschiedene Orte, berechnet aus mehreren Stati
 ## Was brauchen Sie?
 
 - Python 3.13.2 oder neuer
-- Home Assistant (Version 2025.7.0 oder neuer)
+- Home Assistant (Version 2025.9.0 oder neuer)
 - HACS (Home Assistant Community Store) - für die einfache Installation
 - Internetverbindung
 
