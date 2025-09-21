@@ -37,8 +37,21 @@ jobs:
 
       - name: Requirements aktualisieren (nur patch/minor)
         if: steps.timecheck.outputs.should_run == 'true'
+        id: update-deps
         run: |
           python .github/scripts/update_requirements.py
+          
+          # Prüfe ob Home Assistant aktualisiert wurde
+          if git diff --quiet requirements_test.txt; then
+            echo "ha_updated=false" >> $GITHUB_OUTPUT
+            echo "homeassistant_version=" >> $GITHUB_OUTPUT
+          else
+            # Extrahiere neue HA-Version aus requirements_test.txt
+            HA_VERSION=$(grep "^homeassistant" requirements_test.txt | sed 's/.*>= *//')
+            echo "ha_updated=true" >> $GITHUB_OUTPUT
+            echo "homeassistant_version=$HA_VERSION" >> $GITHUB_OUTPUT
+            echo "✅ Home Assistant wird auf Version $HA_VERSION aktualisiert"
+          fi
 
       - name: Pull Request erstellen
         if: steps.timecheck.outputs.should_run == 'true'
@@ -51,6 +64,9 @@ jobs:
             Automatisierte wöchentliche Abhängigkeitsaktualisierung für pip-Requirements und manifest.
             - Wendet nur patch/minor Updates an
             - Überspringt Major-Updates und Major-Updates sensibler Pakete
+            - Berücksichtigt pytest-homeassistant-custom-component Abhängigkeitsketten
+            
+            ${{ steps.update-deps.outputs.ha_updated == 'true' && format('## 🏠 Home Assistant Update\n\n**Neue Version:** {0}\n\n⚠️ **Wichtig:** Nach dem Merge wird automatisch ein Kompatibilitätstest mit dieser HA-Version ausgeführt.', steps.update-deps.outputs.homeassistant_version) || '' }}
           labels: dependencies, python
           branch: chore/weekly-deps-update
           delete-branch: true
