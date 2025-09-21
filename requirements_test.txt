@@ -3,10 +3,10 @@
 
 # Core testing framework (exact versions from original)
 pytest >= 8.4.1
-pytest-asyncio >=1.1.0
+pytest-asyncio >= 1.1.0
 pytest-cov >=6.2.1
 pytest-timeout >=2.4.0
-pytest-mock >= 3.15.0
+pytest-mock >= 3.15.1
 freezegun == 1.5.2
 
 # Code quality  
@@ -15,8 +15,8 @@ isort>=5.12.0
 flake8>=6.0.0
 
 # Home Assistant specific 
-homeassistant >= 2025.9.0
-pytest-homeassistant-custom-component >= 0.13.278
+homeassistant >= 2025.9.3
+pytest-homeassistant-custom-component >= 0.13.280
 
 # MQTT testing
 paho-mqtt>=2.1.0; python_version>='3.13'
