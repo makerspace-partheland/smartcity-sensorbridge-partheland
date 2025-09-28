@@ -110,6 +110,11 @@ def is_stable_version(version: str) -> bool:
     return True
 
 
+def is_homeassistant_beta(version: str) -> bool:
+    """Check if Home Assistant version is a beta version."""
+    return 'b' in version.lower() and not any(tag in version.lower() for tag in ["post", "dev"])
+
+
 def update_type(old: str, new: str) -> str:
     o = numeric_tuple(old)
     n = numeric_tuple(new)
@@ -203,6 +208,13 @@ def process_requirements_file(path: str, changes: List[str], pytest_ha_reqs: Dic
         # use the version from pytest-homeassistant-custom-component if available
         if base_pkg in PYTEST_HA_DEPENDENT_PACKAGES and base_pkg in pytest_ha_reqs:
             target_version = pytest_ha_reqs[base_pkg]
+            
+            # Special handling for Home Assistant: skip beta versions
+            if base_pkg == "homeassistant" and is_homeassistant_beta(target_version):
+                updated_lines.append(line)
+                changes.append(f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (SKIPPED - beta version)")
+                continue
+                
             utype = update_type(req.version, target_version)
             
             # Only update if it's a patch/minor update and we're not downgrading
