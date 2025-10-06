@@ -6,8 +6,6 @@ Rules:
 - Only update to latest STABLE (non pre-release) version.
 - Only apply patch/minor updates automatically. Major updates are skipped.
 - Critical packages (homeassistant, paho-mqtt, aiohttp) are always limited to patch/minor.
-- Respect dependency chains from pytest-homeassistant-custom-component for test requirements.
-- Dynamically track all packages from pytest-homeassistant-custom-component requirements.
 
 Target files:
 - requirements.txt
@@ -28,6 +26,7 @@ import os
 import re
 import sys
 import urllib.request
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -38,10 +37,6 @@ CRITICAL_PACKAGES = {
     "aiohttp",
 }
 
-# Packages that should follow pytest-homeassistant-custom-component requirements
-# This list is dynamically populated from pytest-homeassistant-custom-component requirements
-PYTEST_HA_DEPENDENT_PACKAGES = set()
-
 REQ_FILES = [
     "requirements.txt",
     "requirements_test.txt",
@@ -49,8 +44,13 @@ REQ_FILES = [
 
 MANIFEST_PATH = "custom_components/sensorbridge_partheland/manifest.json"
 
-# URL to fetch pytest-homeassistant-custom-component requirements
+
 PYTEST_HA_REQUIREMENTS_URL = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master/requirements_test.txt"
+PYTEST_HA_DEPENDENT_PACKAGES: set[str] = set()
+
+README_PATH = Path("README.md")
+README_VERSION_PATTERN = re.compile(r"(Home Assistant \(Version\s*)([0-9][^)\s]*)(\s*oder neuer\))")
+README_COMPAT_PATTERN = re.compile(r"(Zuletzt erfolgreich getestet mit Home Assistant )([0-9][^\.\s]*)(\.)")
 
 
 @dataclass
@@ -111,8 +111,12 @@ def is_stable_version(version: str) -> bool:
 
 
 def is_homeassistant_beta(version: str) -> bool:
-    """Check if Home Assistant version is a beta version."""
-    return 'b' in version.lower() and not any(tag in version.lower() for tag in ["post", "dev"])
+    """Return True if the version string represents a Home Assistant beta build."""
+    lowered = version.lower()
+    if 'b' not in lowered:
+        return False
+    # treat beta markers like 'b' while allowing post/dev releases
+    return not any(tag in lowered for tag in ('post', 'dev'))
 
 
 def update_type(old: str, new: str) -> str:
@@ -130,7 +134,7 @@ def update_type(old: str, new: str) -> str:
 def fetch_pytest_ha_requirements() -> Dict[str, str]:
     """Fetch and parse pytest-homeassistant-custom-component requirements."""
     global PYTEST_HA_DEPENDENT_PACKAGES
-    
+
     try:
         with urllib.request.urlopen(PYTEST_HA_REQUIREMENTS_URL, timeout=20) as resp:
             content = resp.read().decode('utf-8')
@@ -139,23 +143,20 @@ def fetch_pytest_ha_requirements() -> Dict[str, str]:
 
     requirements: Dict[str, str] = {}
     PYTEST_HA_DEPENDENT_PACKAGES.clear()
-    
-    for line in content.split('\n'):
-        line = line.strip()
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
         if not line or line.startswith('#'):
             continue
-        
-        # Skip constraint files and other special entries
-        if line.startswith('-') or line.startswith('r '):
+        if line.startswith('-') or line.lower().startswith('r '):
             continue
-            
+
         req = parse_requirement_line(line)
         if req:
             package_name = req.package.lower()
-            # Add all packages from pytest-homeassistant-custom-component to our tracking set
             PYTEST_HA_DEPENDENT_PACKAGES.add(package_name)
             requirements[package_name] = req.version
-    
+
     return requirements
 
 
@@ -204,21 +205,17 @@ def process_requirements_file(path: str, changes: List[str], pytest_ha_reqs: Dic
         pkg_name = req.package.lower()
         base_pkg = pkg_name  # extras already separated
 
-        # For pytest-homeassistant-custom-component dependent packages,
-        # use the version from pytest-homeassistant-custom-component if available
         if base_pkg in PYTEST_HA_DEPENDENT_PACKAGES and base_pkg in pytest_ha_reqs:
             target_version = pytest_ha_reqs[base_pkg]
-            
-            # Special handling for Home Assistant: skip beta versions
-            if base_pkg == "homeassistant" and is_homeassistant_beta(target_version):
+
+            if base_pkg == 'homeassistant' and is_homeassistant_beta(target_version):
                 updated_lines.append(line)
                 changes.append(f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (SKIPPED - beta version)")
                 continue
-                
+
             utype = update_type(req.version, target_version)
-            
-            # Only update if it's a patch/minor update and we're not downgrading
-            if utype in ("patch", "minor") and numeric_tuple(target_version) >= numeric_tuple(req.version):
+
+            if utype in ('patch', 'minor') and numeric_tuple(target_version) >= numeric_tuple(req.version):
                 new_line = rebuild_line(req, target_version)
                 if new_line != line:
                     updated_lines.append(new_line)
@@ -230,7 +227,6 @@ def process_requirements_file(path: str, changes: List[str], pytest_ha_reqs: Dic
                 updated_lines.append(line)
             continue
 
-        # For other packages, use the original logic
         latest = fetch_latest_version(base_pkg)
         if not latest:
             updated_lines.append(line)
@@ -268,6 +264,66 @@ REQ_MANIFEST_RE = re.compile(
     r"(?P<op>>=|==)"  # operator
     r"(?P<version>[0-9][^\s;#]*)$"  # version
 )
+
+
+
+def extract_homeassistant_version(path: str) -> Optional[str]:
+    """Return the noted Home Assistant version from the given requirements file."""
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            req = parse_requirement_line(line)
+            if req and req.package == "homeassistant":
+                return req.version.strip()
+    return None
+
+
+def update_readme(homeassistant_version: Optional[str], changes: List[str]) -> None:
+    """Update README with the documented Home Assistant compatibility version."""
+    if not homeassistant_version or not README_PATH.exists():
+        return
+
+    text = README_PATH.read_text(encoding="utf-8")
+    updated = False
+
+    def _replace_version(match: re.Match[str]) -> str:
+        return f"{match.group(1)}{homeassistant_version}{match.group(3)}"
+
+    new_text, count = README_VERSION_PATTERN.subn(_replace_version, text, count=1)
+    if count:
+        text = new_text
+        updated = True
+
+    compat_line = f"Zuletzt erfolgreich getestet mit Home Assistant {homeassistant_version}."
+
+    def _replace_compat(_: re.Match[str]) -> str:
+        return compat_line
+
+    new_text, count = README_COMPAT_PATTERN.subn(_replace_compat, text, count=1)
+    if count:
+        text = new_text
+        updated = True
+    else:
+        marker = (
+            "Die Integration wird durch die Automatisierung eigenständig gepflegt und "
+            "führt erfolgreiche Abhängigkeits-PRs nach bestandenem CI- und "
+            "HA-Kompatibilitätscheck automatisch zusammen."
+        )
+        if marker in text and compat_line not in text:
+            text = text.replace(marker, f"{marker} {compat_line}", 1)
+            updated = True
+        elif compat_line not in text:
+            updates_heading = "## Updates\n\n"
+            if updates_heading in text:
+                text = text.replace(updates_heading, f"{updates_heading}{compat_line}\n\n", 1)
+                updated = True
+
+    if updated:
+        README_PATH.write_text(text, encoding="utf-8")
+        changes.append(
+            f"README.md: Dokumentierte Home Assistant Version auf {homeassistant_version} aktualisiert"
+        )
 
 
 def process_manifest(path: str, changes: List[str]) -> None:
@@ -322,19 +378,23 @@ def process_manifest(path: str, changes: List[str]) -> None:
 
 def main() -> int:
     changes: List[str] = []
-    
-    # Fetch pytest-homeassistant-custom-component requirements
-    print("Fetching pytest-homeassistant-custom-component requirements...")
+
+    print('Fetching pytest-homeassistant-custom-component requirements...')
     pytest_ha_reqs = fetch_pytest_ha_requirements()
     if pytest_ha_reqs:
         print(f"Loaded {len(pytest_ha_reqs)} requirements from pytest-homeassistant-custom-component")
-        print(f"Tracking {len(PYTEST_HA_DEPENDENT_PACKAGES)} packages for dependency chain resolution")
+        print(f"Tracking {len(PYTEST_HA_DEPENDENT_PACKAGES)} packages for dependency alignment")
     else:
-        print("Warning: Could not fetch pytest-homeassistant-custom-component requirements")
-    
+        print('Warning: Could not fetch pytest-homeassistant-custom-component requirements')
+
     for path in REQ_FILES:
         process_requirements_file(path, changes, pytest_ha_reqs)
     process_manifest(MANIFEST_PATH, changes)
+
+    ha_version = extract_homeassistant_version('requirements_test.txt')
+    if ha_version is None:
+        ha_version = extract_homeassistant_version('requirements.txt')
+    update_readme(ha_version, changes)
 
     if changes:
         print("Dependency updates applied:")

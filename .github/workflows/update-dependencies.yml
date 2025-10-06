@@ -1,4 +1,4 @@
-name: Wöchentliche Abhängigkeitsaktualisierung (pip + manifest)
+﻿name: Wöchentliche Abhängigkeitsaktualisierung (pip + manifest)
 
 on:
   schedule:
@@ -65,10 +65,8 @@ jobs:
             - Wendet nur patch/minor Updates an
             - Überspringt Major-Updates und Major-Updates sensibler Pakete
             - Berücksichtigt pytest-homeassistant-custom-component Abhängigkeitsketten
-            
-            ${{ steps.update-deps.outputs.ha_updated == 'true' && format('## Home Assistant Update\n\n**Neue Version:** {0}\n\n**Info:** Nach dem Merge wird automatisch ein Kompatibilitätstest mit dieser HA-Version ausgeführt.', steps.update-deps.outputs.homeassistant_version) || '' }}
+
+            ${{ steps.update-deps.outputs.ha_updated == 'true' && format("## Home Assistant Update\n\n**Neue Version:** {0}\n\n**Info:** Nach dem Merge wird automatisch ein Kompatibilitätstest mit dieser HA-Version ausgeführt.", steps.update-deps.outputs.homeassistant_version) || '' }}
           labels: dependencies, python
           branch: chore/weekly-deps-update
           delete-branch: true
-
-
