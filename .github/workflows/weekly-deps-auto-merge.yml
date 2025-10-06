@@ -1,4 +1,4 @@
-name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
+﻿name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
 
 on:
   pull_request_target:
@@ -18,10 +18,24 @@ jobs:
         with:
           review-message: "Automatische Genehmigung wöchentlicher patch/minor Abhängigkeitsaktualisierung"
 
-      - name: Auto-Merge aktivieren (squash)
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          merge-method: squash
+      - name: Statuschecks beobachten
+        id: wait-checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr checks ${{ github.event.pull_request.number }} --watch
 
+      - name: Merge-Status abrufen
+        id: pr-state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          merged=$(gh pr view ${{ github.event.pull_request.number }} --json merged --jq '.merged')
+          echo "merged=${merged}" >> "${GITHUB_OUTPUT}"
 
+      - name: PR mergen und Branch löschen
+        if: steps.pr-state.outputs.merged != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch --body "Automatisch zusammengeführt nach erfolgreichen Statuschecks." --subject "deps: wöchentliche Abhängigkeitsaktualisierung (automatisch)"

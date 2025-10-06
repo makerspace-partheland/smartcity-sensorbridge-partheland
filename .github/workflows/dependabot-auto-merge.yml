@@ -1,4 +1,4 @@
-name: Dependabot Auto-Genehmigung & Auto-Merge (Patch)
+﻿name: Dependabot Auto-Genehmigung & Auto-Merge (Patch)
 
 on:
   pull_request_target:
@@ -25,11 +25,26 @@ jobs:
         with:
           review-message: "Automatische Genehmigung von Dependabot Patch-Update"
 
-      - name: Auto-Merge für Patch aktivieren (squash)
+      - name: Statuschecks beobachten
         if: contains(steps.metadata.outputs.update-type, 'version-update:semver-patch') && !contains(steps.metadata.outputs.dependencies, 'homeassistant') && !contains(steps.metadata.outputs.dependencies, 'paho-mqtt') && !contains(steps.metadata.outputs.dependencies, 'aiohttp')
-        uses: peter-evans/enable-pull-request-automerge@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          merge-method: squash
+        id: wait-checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr checks ${{ github.event.pull_request.number }} --watch
 
+      - name: Merge-Status abrufen
+        if: contains(steps.metadata.outputs.update-type, 'version-update:semver-patch') && !contains(steps.metadata.outputs.dependencies, 'homeassistant') && !contains(steps.metadata.outputs.dependencies, 'paho-mqtt') && !contains(steps.metadata.outputs.dependencies, 'aiohttp')
+        id: pr-state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          merged=$(gh pr view ${{ github.event.pull_request.number }} --json merged --jq '.merged')
+          echo "merged=${merged}" >> "${GITHUB_OUTPUT}"
 
+      - name: PR mergen und Branch löschen
+        if: contains(steps.metadata.outputs.update-type, 'version-update:semver-patch') && !contains(steps.metadata.outputs.dependencies, 'homeassistant') && !contains(steps.metadata.outputs.dependencies, 'paho-mqtt') && !contains(steps.metadata.outputs.dependencies, 'aiohttp') && steps.pr-state.outputs.merged != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch --body "Automatisch zusammengeführt nach erfolgreichen Statuschecks." --subject "deps: Dependabot Patch-Update (automatisch)"
