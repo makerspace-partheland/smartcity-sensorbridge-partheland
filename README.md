@@ -37,7 +37,7 @@ Ausfallsichere Median-Werte für verschiedene Orte, berechnet aus mehreren Stati
 ## Was brauchen Sie?
 
 - Python 3.13.2 oder neuer
-- Home Assistant (Version 2025.10.1 oder neuer)
+- Home Assistant (Version 2025.9.0 oder neuer)
 - HACS (Home Assistant Community Store) - für die einfache Installation
 - Internetverbindung
 
