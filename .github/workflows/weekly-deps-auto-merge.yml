@@ -13,11 +13,6 @@ jobs:
     if: github.event.pull_request.head.ref == 'chore/weekly-deps-update'
     runs-on: ubuntu-latest
     steps:
-      - name: Wöchentlichen Deps PR automatisch genehmigen
-        uses: hmarr/auto-approve-action@v4
-        with:
-          review-message: "Automatische Genehmigung wöchentlicher patch/minor Abhängigkeitsaktualisierung"
-
       - name: Statuschecks beobachten und auf Erfolg warten
         id: wait-checks
         env:
