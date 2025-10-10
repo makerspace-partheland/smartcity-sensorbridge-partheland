@@ -37,7 +37,7 @@ Ausfallsichere Median-Werte für verschiedene Orte, berechnet aus mehreren Stati
 ## Was brauchen Sie?
 
 - Python 3.13.2 oder neuer
-- Home Assistant (Version 2025.9.0 oder neuer)
+- Home Assistant (Version 2025.10.1 oder neuer)
 - HACS (Home Assistant Community Store) - für die einfache Installation
 - Internetverbindung
 
@@ -115,7 +115,7 @@ logger:
 
 ## Updates
 
-- **Automatisch**: HACS zeigt Updates an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell (Patch/Minor) und erstellen PRs. Dependabot aktualisiert GitHub Actions-Versionen automatisch. Die Integration wird durch die Automatisierung eigenständig gepflegt und führt erfolgreiche Abhängigkeits-PRs nach bestandenem CI- und HA-Kompatibilitätscheck automatisch zusammen.
+- **Automatisch**: HACS zeigt Updates an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell (Patch/Minor) und erstellen PRs. Dependabot aktualisiert GitHub Actions-Versionen automatisch. Die Integration wird durch die Automatisierung eigenständig gepflegt und führt erfolgreiche Abhängigkeits-PRs nach bestandenem CI- und HA-Kompatibilitätscheck automatisch zusammen. Zuletzt erfolgreich getestet mit Home Assistant 2025.10.1.
 - **Manuell**: Neue Version herunterladen.
 
 ## Unterstützung
