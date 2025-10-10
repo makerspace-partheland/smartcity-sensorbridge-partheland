@@ -7,7 +7,7 @@ on:
       - 'requirements_test.txt'
       - 'requirements.txt'
       - 'custom_components/sensorbridge_partheland/manifest.json'
-  pull_request:
+  pull_request_target:
     branches: [main]
     paths:
       - 'requirements_test.txt'
@@ -26,6 +26,7 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v5
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Prüfe Home Assistant Versionsänderung
