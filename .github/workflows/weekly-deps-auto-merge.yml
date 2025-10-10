@@ -1,8 +1,10 @@
 ﻿name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
 
 on:
-  pull_request_target:
-    types: [opened, reopened, synchronize, labeled]
+  workflow_run:
+    workflows: ["CI", "Post-Merge HA Compatibility Test"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: write
@@ -10,54 +12,71 @@ permissions:
 
 jobs:
   automerge-weekly:
-    if: github.event.pull_request.head.ref == 'chore/weekly-deps-update'
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'chore/weekly-deps-update'
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v5
-      
-      - name: Statuschecks beobachten und auf Erfolg warten
-        id: wait-checks
+
+      - name: PR-Nummer extrahieren
+        id: pr-info
+        run: |
+          PR_NUMBER=${{ github.event.workflow_run.pull_requests[0].number }}
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+          echo "PR-Nummer: ${PR_NUMBER}"
+
+      - name: Required Workflows Status prüfen
+        id: check-status
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Warte auf erfolgreichen Abschluss aller Checks..."
+          PR_NUMBER=${{ steps.pr-info.outputs.pr_number }}
+          echo "Prüfe Status aller Required Workflows für Weekly Deps PR #${PR_NUMBER}..."
           
-          # Prüfe finalen Status aller Checks (außer Auto-Merge selbst)
-          CHECK_STATUS=$(gh pr checks ${{ github.event.pull_request.number }} --json state,name --jq '.[] | select(.name != "automerge-weekly") | select(.state != "SUCCESS") | .state' | head -1)
+          # Prüfe Status der beiden Required Workflows
+          CI_STATUS=$(gh pr checks ${PR_NUMBER} --json name,conclusion --jq '.[] | select(.name == "CI") | .conclusion' || echo "null")
+          HA_STATUS=$(gh pr checks ${PR_NUMBER} --json name,conclusion --jq '.[] | select(.name == "Post-Merge HA Compatibility Test") | .conclusion' || echo "null")
           
-          if [ -n "$CHECK_STATUS" ]; then
-            echo "Mindestens ein Check ist fehlgeschlagen oder pending. Auto-Merge abgebrochen."
-            echo "check_success=false" >> $GITHUB_OUTPUT
-            exit 1
+          echo "CI Status: ${CI_STATUS}"
+          echo "HA Compatibility Test Status: ${HA_STATUS}"
+          
+          if [ "$CI_STATUS" = "success" ] && [ "$HA_STATUS" = "success" ]; then
+            echo "Alle Required Workflows erfolgreich"
+            echo "all_checks_success=true" >> $GITHUB_OUTPUT
           else
-            echo "Alle Checks erfolgreich"
-            echo "check_success=true" >> $GITHUB_OUTPUT
+            echo "Mindestens ein Required Workflow ist nicht erfolgreich"
+            echo "all_checks_success=false" >> $GITHUB_OUTPUT
+            exit 1
           fi
 
-      - name: Merge-Status abrufen
+      - name: Merge-Status prüfen
         id: pr-state
+        if: steps.check-status.outputs.all_checks_success == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          merged=$(gh pr view ${{ github.event.pull_request.number }} --json merged --jq '.merged')
-          echo "merged=${merged}" >> "${GITHUB_OUTPUT}"
+          PR_NUMBER=${{ steps.pr-info.outputs.pr_number }}
+          MERGED=$(gh pr view ${PR_NUMBER} --json merged --jq '.merged')
+          echo "merged=${MERGED}" >> $GITHUB_OUTPUT
+          
+          if [ "$MERGED" = "true" ]; then
+            echo "PR #${PR_NUMBER} bereits gemerged"
+          else
+            echo "PR #${PR_NUMBER} bereit für Merge"
+          fi
 
       - name: PR mergen und Branch löschen
-        if: steps.wait-checks.outputs.check_success == 'true'
+        if: steps.check-status.outputs.all_checks_success == 'true' && steps.pr-state.outputs.merged == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Prüfe ob bereits gemerged
-          MERGED=$(gh pr view ${{ github.event.pull_request.number }} --json merged --jq '.merged')
-          if [ "$MERGED" = "true" ]; then
-            echo "PR bereits gemerged"
-            exit 0
-          fi
+          PR_NUMBER=${{ steps.pr-info.outputs.pr_number }}
           
-          # Merge durchführen
-          gh pr merge ${{ github.event.pull_request.number }} \
+          echo "Merging Weekly Deps PR #${PR_NUMBER}..."
+          gh pr merge ${PR_NUMBER} \
             --squash \
             --delete-branch \
-            --body "Automatisch zusammengeführt nach erfolgreichen Statuschecks." \
+            --body "Automatisch zusammengeführt nach erfolgreichen Required Workflows (CI + HA Compatibility Test)." \
             --subject "deps: wöchentliche Abhängigkeitsaktualisierung (automatisch)"
+          
+          echo "Weekly Deps PR #${PR_NUMBER} erfolgreich gemerged"
