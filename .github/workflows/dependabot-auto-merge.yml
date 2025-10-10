@@ -1,9 +1,8 @@
 ﻿name: Dependabot Auto-Genehmigung & Auto-Merge (Patch)
 
 on:
-  workflow_run:
-    workflows: ["CI", "Post-Merge HA Compatibility Test"]
-    types: [completed]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
@@ -11,7 +10,7 @@ permissions:
 
 jobs:
   automerge:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.pull_requests[0].user.login == 'dependabot[bot]'
+    if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken
@@ -23,43 +22,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: PR-Nummer extrahieren
-        id: pr-info
-        run: |
-          PR_NUMBER=${{ github.event.workflow_run.pull_requests[0].number }}
-          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
-          echo "PR-Nummer: ${PR_NUMBER}"
-
-      - name: Required Workflows Status prüfen
-        id: check-status
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER=${{ steps.pr-info.outputs.pr_number }}
-          echo "Prüfe Status aller Required Workflows für PR #${PR_NUMBER}..."
-          
-          # Debug: Zeige alle verfügbaren Checks
-          echo "Alle verfügbaren Checks:"
-          gh pr checks ${PR_NUMBER} --json name,state
-          
-          # Prüfe ob mindestens ein fehlgeschlagener Check existiert
-          FAILED_CHECKS=$(gh pr checks ${PR_NUMBER} --json name,state --jq '[.[] | select(.state != "SUCCESS")] | length')
-          TOTAL_CHECKS=$(gh pr checks ${PR_NUMBER} --json name,state --jq 'length')
-          
-          echo "Gesamt: ${TOTAL_CHECKS} Checks, davon ${FAILED_CHECKS} nicht erfolgreich"
-          
-          if [ "$FAILED_CHECKS" = "0" ] && [ "$TOTAL_CHECKS" -gt "0" ]; then
-            echo "Alle Checks erfolgreich"
-            echo "all_checks_success=true" >> $GITHUB_OUTPUT
-          else
-            echo "Mindestens ein Check ist nicht erfolgreich oder keine Checks gefunden"
-            echo "all_checks_success=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
       - name: Dependabot Metadaten validieren
         id: validate-deps
-        if: steps.check-status.outputs.all_checks_success == 'true'
         run: |
           # Validiere Update-Typ (nur patch)
           if ! echo "${{ steps.metadata.outputs.update-type }}" | grep -q "version-update:semver-patch"; then
@@ -79,34 +43,19 @@ jobs:
           echo "Dependabot Update ist für Auto-Merge geeignet"
           echo "valid_update=true" >> $GITHUB_OUTPUT
 
-      - name: Merge-Status prüfen
-        id: pr-state
-        if: steps.check-status.outputs.all_checks_success == 'true' && steps.validate-deps.outputs.valid_update == 'true'
+      - name: Auto-Merge aktivieren
+        if: steps.validate-deps.outputs.valid_update == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=${{ steps.pr-info.outputs.pr_number }}
-          MERGED=$(gh pr view ${PR_NUMBER} --json merged --jq '.merged')
-          echo "merged=${MERGED}" >> $GITHUB_OUTPUT
+          PR_NUMBER=${{ github.event.pull_request.number }}
           
-          if [ "$MERGED" = "true" ]; then
-            echo "PR #${PR_NUMBER} bereits gemerged"
-          else
-            echo "PR #${PR_NUMBER} bereit für Merge"
-          fi
-
-      - name: PR mergen und Branch löschen
-        if: steps.check-status.outputs.all_checks_success == 'true' && steps.validate-deps.outputs.valid_update == 'true' && steps.pr-state.outputs.merged == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER=${{ steps.pr-info.outputs.pr_number }}
-          
-          echo "Merging PR #${PR_NUMBER}..."
+          echo "Aktiviere Auto-Merge für PR #${PR_NUMBER}..."
           gh pr merge ${PR_NUMBER} \
+            --auto \
             --squash \
             --delete-branch \
-            --body "Automatisch zusammengeführt nach erfolgreichen Required Workflows (CI + HA Compatibility Test)." \
+            --body "Automatisch zusammengeführt nach erfolgreichen Required Checks." \
             --subject "deps: Dependabot Patch-Update (automatisch)"
           
-          echo "PR #${PR_NUMBER} erfolgreich gemerged"
+          echo "Auto-Merge für PR #${PR_NUMBER} aktiviert"
