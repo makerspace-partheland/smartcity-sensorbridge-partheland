@@ -33,8 +33,8 @@ jobs:
           echo "Prüfe Status aller Required Workflows für Weekly Deps PR #${PR_NUMBER}..."
           
           # Prüfe Status der beiden Required Workflows
-          CI_STATUS=$(gh pr checks ${PR_NUMBER} --json name,state --jq '.[] | select(.name == "CI") | .state' || echo "null")
-          HA_STATUS=$(gh pr checks ${PR_NUMBER} --json name,state --jq '.[] | select(.name == "Post-Merge HA Compatibility Test") | .state' || echo "null")
+          CI_STATUS=$(gh pr checks ${PR_NUMBER} --json name,state --jq '.[] | select(.name == "CI / test (pull_request_target)") | .state' || echo "null")
+          HA_STATUS=$(gh pr checks ${PR_NUMBER} --json name,state --jq '.[] | select(.name == "Post-Merge HA Compatibility Test / ha-compatibility-test (pull_request_target)") | .state' || echo "null")
           
           echo "CI Status: ${CI_STATUS}"
           echo "HA Compatibility Test Status: ${HA_STATUS}"
