@@ -2,7 +2,7 @@
 
 ## Was ist das?
 
-Diese Custom Integration verbindet Ihr Home Assistant mit dem SmartCity-Netzwerk Partheland und zeigt Ihnen Umweltdaten von lokalen Sensoren direkt in Ihrem Smart Home an. Die Daten kommen von Sensoren in Ihrer Region und werden in Echtzeit aktualisiert.
+Diese Custom Integration verbindet Dein Home Assistant mit dem SmartCity-Netzwerk Partheland und zeigt Ihnen Umweltdaten von lokalen Sensoren direkt in Ihrem Smart Home an. Die Daten kommen von Sensoren in Ihrer Region und werden in Echtzeit aktualisiert.
 
 ## Was können Sie damit machen?
 
