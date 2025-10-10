@@ -10,20 +10,31 @@ permissions:
 
 jobs:
   automerge-weekly:
-    if: github.actor == 'github-actions[bot]' && github.event.pull_request.head.ref == 'chore/weekly-deps-update'
+    if: github.event.pull_request.head.ref == 'chore/weekly-deps-update'
     runs-on: ubuntu-latest
     steps:
-      - name: Wöchentlichen Deps PR automatisch genehmigen
-        uses: hmarr/auto-approve-action@v4
-        with:
-          review-message: "Automatische Genehmigung wöchentlicher patch/minor Abhängigkeitsaktualisierung"
-
-      - name: Statuschecks beobachten
+      - name: Repository auschecken
+        uses: actions/checkout@v5
+      
+      - name: Statuschecks beobachten und auf Erfolg warten
         id: wait-checks
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr checks ${{ github.event.pull_request.number }} --watch
+          echo "Warte auf erfolgreichen Abschluss aller Checks..."
+          gh pr checks ${{ github.event.pull_request.number }} --watch --interval 30
+          
+          # Prüfe finalen Status aller Checks
+          CHECK_STATUS=$(gh pr checks ${{ github.event.pull_request.number }} --json state --jq '.[] | select(.state != "SUCCESS") | .state' | head -1)
+          
+          if [ -n "$CHECK_STATUS" ]; then
+            echo "Mindestens ein Check ist fehlgeschlagen oder pending. Auto-Merge abgebrochen."
+            echo "check_success=false" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "Alle Checks erfolgreich"
+            echo "check_success=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Merge-Status abrufen
         id: pr-state
@@ -34,8 +45,20 @@ jobs:
           echo "merged=${merged}" >> "${GITHUB_OUTPUT}"
 
       - name: PR mergen und Branch löschen
-        if: steps.pr-state.outputs.merged != 'true'
+        if: steps.wait-checks.outputs.check_success == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch --body "Automatisch zusammengeführt nach erfolgreichen Statuschecks." --subject "deps: wöchentliche Abhängigkeitsaktualisierung (automatisch)"
+          # Prüfe ob bereits gemerged
+          MERGED=$(gh pr view ${{ github.event.pull_request.number }} --json merged --jq '.merged')
+          if [ "$MERGED" = "true" ]; then
+            echo "PR bereits gemerged"
+            exit 0
+          fi
+          
+          # Merge durchführen
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --squash \
+            --delete-branch \
+            --body "Automatisch zusammengeführt nach erfolgreichen Statuschecks." \
+            --subject "deps: wöchentliche Abhängigkeitsaktualisierung (automatisch)"

@@ -1,7 +1,7 @@
 name: HACS Validation
 
 on:
-  pull_request:
+  pull_request_target:
   schedule:
     - cron: '0 3 * * 5'  # CET → 05:00 Europe/Berlin
     - cron: '0 4 * * 5'  # CEST → 05:00 Europe/Berlin
@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Zeitgesteuerte Ausführung (nur 05:00 Europa/Berlin bei Zeitplan)
         if: github.event_name == 'schedule'
