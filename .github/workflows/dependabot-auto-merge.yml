@@ -19,6 +19,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Repository auschecken
+        uses: actions/checkout@v5
+
       - name: Statuschecks beobachten und auf Erfolg warten
         if: contains(steps.metadata.outputs.update-type, 'version-update:semver-patch') && !contains(steps.metadata.outputs.dependencies, 'homeassistant') && !contains(steps.metadata.outputs.dependencies, 'paho-mqtt') && !contains(steps.metadata.outputs.dependencies, 'aiohttp')
         id: wait-checks
