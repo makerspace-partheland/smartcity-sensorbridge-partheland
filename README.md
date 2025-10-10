@@ -2,16 +2,16 @@
 
 ## Was ist das?
 
-Diese Custom Integration verbindet Dein Home Assistant mit dem SmartCity-Netzwerk Partheland und zeigt Ihnen Umweltdaten von lokalen Sensoren direkt in Ihrem Smart Home an. Die Daten kommen von Sensoren in Ihrer Region und werden in Echtzeit aktualisiert.
+Diese Custom Integration verbindet Dein Home Assistant mit dem SmartCity-Netzwerk Partheland und zeigt Umweltdaten von lokalen Sensoren im Partheland direkt in Deinem Smart Home an. Die Daten kommen von Sensoren in Deiner Region und werden in Echtzeit aktualisiert.
 
-## Was können Sie damit machen?
+## Was können wir damit machen?
 
 - **Umweltdaten anzeigen**: Temperatur, Luftfeuchte, Luftqualität und mehr
 - **Lokale Sensordaten**: Umweltinformationen von Sensoren in Ihrer Nähe
 - **Automatisierungen**: Reagieren Sie auf Umweltveränderungen
 - **Dashboard**: Schöne Übersichten in der Home Assistant Oberfläche
 
-## Welche Daten sehen Sie?
+## Welche Daten sehen wir?
 
 ### senseBox:home Stationen
 
@@ -34,7 +34,7 @@ Die Integration unterstützt senseBox:home Umweltstationen in verschiedenen Orte
 
 Ausfallsichere Median-Werte für verschiedene Orte, berechnet aus mehreren Stationen je Ort oder dem gesamten Partheland.
 
-## Was brauchen Sie?
+## Was brauchen wir?
 
 - Python 3.13.2 oder neuer
 - Home Assistant (Version 2025.9.0 oder neuer)
@@ -46,29 +46,29 @@ Ausfallsichere Median-Werte für verschiedene Orte, berechnet aus mehreren Stati
 ### Installation über HACS (Empfohlen)
 
 1. **Repository in HACS hinzufügen (Custom Repository)**:
-   - Öffnen Sie HACS in der Seitenleiste
-   - Klicken Sie auf **⋯** (drei Punkte oben rechts)
-   - Wählen Sie **Benutzerdefiniertes Repository**
-   - Fügen Sie diese URL hinzu: `https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland`
+   - Öffne  HACS in der Seitenleiste
+   - Klicken auf **⋯** (drei Punkte oben rechts)
+   - Wähle  **Benutzerdefiniertes Repository**
+   - Füge diese URL hinzu: `https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland`
    - Typ: Integration
-   - Klicken Sie auf Hinzufügen
+   - Klicke  auf Hinzufügen
 
 2. **Integration installieren**
-   - Öffnen Sie in HACS den Bereich **Integrationen**
-   - Klicken Sie auf ***SmartCity SensorBridge Partheland*** → **Installieren**
-   - Starten Sie Home Assistant neu
+   - Öffne in HACS den Bereich **Integrationen**
+   - Klicke  auf ***SmartCity SensorBridge Partheland*** → **Installieren**
+   - Starte Home Assistant neu
 
 3. **Integration einrichten**:
-   - Gehen Sie zu **Einstellungen** → **Geräte & Dienste**
-   - Klicken Sie auf **+ Integration hinzufügen**
-   - Suchen Sie nach "SmartCity SensorBridge Partheland"
-   - Folgen Sie der Einrichtung
+   - Gehe zu **Einstellungen** → **Geräte & Dienste**
+   - Klicke auf **+ Integration hinzufügen**
+   - Suche nach "SmartCity SensorBridge Partheland"
+   - Folge der Einrichtung
 
 ### Manuelle Installation (für Fortgeschrittene)
 
-1. Laden Sie die Dateien herunter
-2. Kopieren Sie den Ordner `custom_components/sensorbridge_partheland/` in Ihr Home Assistant
-3. Starten Sie Home Assistant neu
+1. Lade die Dateien herunter
+2. Kopiere den Ordner `custom_components/sensorbridge_partheland/` in Dein Home Assistant
+3. Starte Home Assistant neu
 
 ## Einrichtung
 
@@ -86,13 +86,12 @@ Die Integration lädt automatisch alle verfügbaren Sensoren und zeigt sie in Ho
 
 #### Ich sehe keine Daten
 
-- Prüfen Sie, ob die Integration korrekt installiert ist
-- Schauen Sie in die Logs (siehe unten)
+- Prüfe, ob die Integration korrekt installiert ist
+- Schaue in die Logs (siehe unten)
 
 #### Die Werte sind falsch
 
-- Die Sensoren werden regelmäßig kalibriert
-- Kontaktieren Sie uns bei Problemen
+- Kontaktiere uns bei Problemen
 
 #### Wie aktualisiere ich die Integration?
 
@@ -106,7 +105,7 @@ Die Integration lädt automatisch alle verfügbaren Sensoren und zeigt sie in Ho
 
 ### Logs prüfen
 
-Fügen Sie dies zu Ihrer `configuration.yaml` hinzu:
+Fügen dies zu Deiner `configuration.yaml` hinzu:
 
 ```yaml
 logger:
@@ -121,12 +120,12 @@ logger:
 ## Unterstützung
 
 - **Probleme melden**: [GitHub Issues](https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland/issues)
-- **Community**: [Makerspace Partheland](https://makerspace-partheland.de)
+- **Kontakt**: [Makerspace Partheland](https://makerspace-partheland.de)
 
 ## Lizenz
 
-MIT License - Sie können die Software frei nutzen und anpassen.
+MIT License - Du kannst die Integration frei nutzen und anpassen.
 
 ---
 
-**Tipp**: Diese Integration ist Teil des SmartCity-Projekts Partheland. Weitere Informationen finden Sie auf [makerspace-partheland.de](https://makerspace-partheland.de).
+**Tipp**: Diese Integration ist Teil des SmartCity-Projekts Partheland. Weitere Informationen findest Du auf [makerspace-partheland.de](https://makerspace-partheland.de).
