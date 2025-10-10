@@ -19,12 +19,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Patch-Updates automatisch genehmigen
-        if: contains(steps.metadata.outputs.update-type, 'version-update:semver-patch') && !contains(steps.metadata.outputs.dependencies, 'homeassistant') && !contains(steps.metadata.outputs.dependencies, 'paho-mqtt') && !contains(steps.metadata.outputs.dependencies, 'aiohttp')
-        uses: hmarr/auto-approve-action@v4
-        with:
-          review-message: "Automatische Genehmigung von Dependabot Patch-Update"
-
       - name: Statuschecks beobachten und auf Erfolg warten
         if: contains(steps.metadata.outputs.update-type, 'version-update:semver-patch') && !contains(steps.metadata.outputs.dependencies, 'homeassistant') && !contains(steps.metadata.outputs.dependencies, 'paho-mqtt') && !contains(steps.metadata.outputs.dependencies, 'aiohttp')
         id: wait-checks
