@@ -29,7 +29,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Warte auf erfolgreichen Abschluss aller Checks..."
-          gh pr checks ${{ github.event.pull_request.number }} --watch --interval 30
           
           # Prüfe finalen Status aller Checks (außer Auto-Merge selbst)
           CHECK_STATUS=$(gh pr checks ${{ github.event.pull_request.number }} --json state,name --jq '.[] | select(.name != "automerge") | select(.state != "SUCCESS") | .state' | head -1)
