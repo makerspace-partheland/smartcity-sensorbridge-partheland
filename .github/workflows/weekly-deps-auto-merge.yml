@@ -4,7 +4,6 @@ on:
   workflow_run:
     workflows: ["CI", "Post-Merge HA Compatibility Test"]
     types: [completed]
-    branches: [main]
 
 permissions:
   contents: write
