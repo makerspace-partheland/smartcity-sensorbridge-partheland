@@ -3,16 +3,8 @@
 on:
   push:
     branches: [main]
-    paths:
-      - 'requirements_test.txt'
-      - 'requirements.txt'
-      - 'custom_components/sensorbridge_partheland/manifest.json'
   pull_request_target:
     branches: [main]
-    paths:
-      - 'requirements_test.txt'
-      - 'requirements.txt'
-      - 'custom_components/sensorbridge_partheland/manifest.json'
 
 permissions:
   contents: read
@@ -26,15 +18,44 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
+      - name: Prüfe ob HA-Test nötig ist
+        id: check-needed
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            BASE_BRANCH="${GITHUB_BASE_REF}"
+            git fetch origin "${BASE_BRANCH}" --depth=1
+            DIFF_BASE="origin/${BASE_BRANCH}"
+          else
+            DIFF_BASE="HEAD~1"
+          fi
+
+          # Prüfe ob HA-relevante Dateien geändert wurden
+          if git diff "${DIFF_BASE}" HEAD --name-only | grep -E "(requirements.*\.txt|manifest\.json)"; then
+            echo "test_needed=true" >> "${GITHUB_OUTPUT}"
+            echo "HA-relevante Änderungen erkannt - Test wird ausgeführt"
+          else
+            echo "test_needed=false" >> "${GITHUB_OUTPUT}"
+            echo "Keine HA-relevanten Änderungen - Test wird übersprungen"
+          fi
+
+      - name: HA-Test überspringen
+        if: steps.check-needed.outputs.test_needed == 'false'
+        run: |
+          echo "HA-Kompatibilitätstest übersprungen - keine relevanten Änderungen"
+          echo "Check erfolgreich abgeschlossen"
+
       - name: Prüfe Home Assistant Versionsänderung
+        if: steps.check-needed.outputs.test_needed == 'true'
         id: check-ha-change
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             BASE_BRANCH="${GITHUB_BASE_REF}"
             git fetch origin "${BASE_BRANCH}" --depth=1
             DIFF_BASE="origin/${BASE_BRANCH}"
@@ -61,13 +82,13 @@ jobs:
           fi
 
       - name: Python einrichten
-        if: steps.check-ha-change.outputs.ha_changed == 'true'
+        if: steps.check-needed.outputs.test_needed == 'true' && steps.check-ha-change.outputs.ha_changed == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: '3.13.2'
 
       - name: Dependencies installieren
-        if: steps.check-ha-change.outputs.ha_changed == 'true'
+        if: steps.check-needed.outputs.test_needed == 'true' && steps.check-ha-change.outputs.ha_changed == 'true'
         run: |
           python -m pip install --upgrade pip
 
@@ -77,7 +98,7 @@ jobs:
           pip install "homeassistant==${{ steps.check-ha-change.outputs.ha_version }}" --force-reinstall
 
       - name: Kompatibilitätstest ausführen
-        if: steps.check-ha-change.outputs.ha_changed == 'true'
+        if: steps.check-needed.outputs.test_needed == 'true' && steps.check-ha-change.outputs.ha_changed == 'true'
         id: tests
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -101,7 +122,7 @@ jobs:
           fi
 
       - name: Issue für fehlgeschlagene Tests erstellen
-        if: github.event_name == 'push' && steps.check-ha-change.outputs.ha_changed == 'true' && steps.tests.outputs.test_status == 'failed'
+        if: github.event_name == 'push' && steps.check-needed.outputs.test_needed == 'true' && steps.check-ha-change.outputs.ha_changed == 'true' && steps.tests.outputs.test_status == 'failed'
         env:
           HA_VERSION: ${{ steps.check-ha-change.outputs.ha_version }}
           TEST_SUMMARY: ${{ steps.tests.outputs.test_summary }}
@@ -132,7 +153,7 @@ jobs:
             -d "$(jq -n --arg title "HA ${HA_VERSION} Kompatibilitätsproblem" --arg body "$ISSUE_BODY" '{title:$title, body:$body, labels:["bug","home-assistant","compatibility"]}')"
 
       - name: Erfolg dokumentieren
-        if: steps.check-ha-change.outputs.ha_changed == 'true' && (steps.tests.outputs.test_status == 'success' || steps.tests.outputs.test_status == 'no-tests')
+        if: steps.check-needed.outputs.test_needed == 'true' && steps.check-ha-change.outputs.ha_changed == 'true' && (steps.tests.outputs.test_status == 'success' || steps.tests.outputs.test_status == 'no-tests')
         run: |
           echo "Home Assistant ${{ steps.check-ha-change.outputs.ha_version }} Kompatibilitätstest erfolgreich"
           echo "Alle Tests bestanden oder nicht erforderlich"
