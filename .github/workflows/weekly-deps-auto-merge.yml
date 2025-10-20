@@ -10,7 +10,10 @@ permissions:
 
 jobs:
   automerge-weekly:
-    if: github.event.pull_request.head.ref == 'chore/weekly-deps-update'
+    if: |
+      github.event.pull_request.head.ref == 'chore/weekly-deps-update' &&
+      github.actor != 'github-actions[bot]'
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken

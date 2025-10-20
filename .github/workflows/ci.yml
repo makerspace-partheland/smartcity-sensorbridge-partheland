@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   test:
+    # Verhindere Loop: Nicht bei push von github-actions[bot]
+    if: github.actor != 'github-actions[bot]' || github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken
