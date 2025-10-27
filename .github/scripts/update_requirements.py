@@ -50,7 +50,7 @@ PYTEST_HA_DEPENDENT_PACKAGES: set[str] = set()
 
 README_PATH = Path("README.md")
 README_VERSION_PATTERN = re.compile(r"(Home Assistant \(Version\s*)([0-9][^)\s]*)(\s*oder neuer\))")
-README_COMPAT_PATTERN = re.compile(r"(Zuletzt erfolgreich getestet mit Home Assistant )([0-9][^\.\s]*)(\.)")
+README_COMPAT_PATTERN = re.compile(r"(Zuletzt erfolgreich getestet mit Home Assistant )([0-9]+(?:\.[0-9]+)*)(\.)")
 
 
 @dataclass
