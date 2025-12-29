@@ -1,4 +1,4 @@
-﻿name: Post-Merge HA Compatibility Test
+name: Post-Merge HA Compatibility Test
 
 on:
   push:

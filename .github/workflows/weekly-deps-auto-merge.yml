@@ -1,4 +1,4 @@
-﻿name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
+name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
 
 on:
   pull_request_target:
