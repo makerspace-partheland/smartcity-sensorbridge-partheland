@@ -1,4 +1,4 @@
-﻿name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
+name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
 
 on:
   pull_request_target:
@@ -11,6 +11,7 @@ permissions:
 jobs:
   automerge-weekly:
     if: github.event.pull_request.head.ref == 'chore/weekly-deps-update'
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken

@@ -57,6 +57,7 @@ jobs:
         if: steps.timecheck.outputs.should_run == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ secrets.WORKFLOW_PAT }}
           commit-message: |
             deps: wöchentliche Abhängigkeitsaktualisierungen (patch/minor)
           title: "deps: wöchentliche Abhängigkeitsaktualisierungen (patch/minor)"
