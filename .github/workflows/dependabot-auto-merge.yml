@@ -1,4 +1,4 @@
-﻿name: Dependabot Auto-Genehmigung & Auto-Merge (Patch)
+name: Dependabot Auto-Genehmigung & Auto-Merge (Patch)
 
 on:
   pull_request_target:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Dependabot Metadaten abrufen
         id: metadata
