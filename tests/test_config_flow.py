@@ -54,15 +54,24 @@ def mock_config_service(mocker):
 def mock_integration_setup(mocker, mock_config_service):
     """Mock für die Integration Setup, um den ConfigService korrekt zu injizieren."""
     # Mock die Integration Setup - verhindert echte Service-Initialisierung
+    async def _mock_async_initialize_services(hass):
+        mock_hass_data(hass)
+
     mocker.patch(
-        "custom_components.sensorbridge_partheland.__init__._async_initialize_services",
-        side_effect=lambda hass: mock_hass_data(hass)
+        "custom_components.sensorbridge_partheland._async_initialize_services",
+        side_effect=_mock_async_initialize_services,
     )
-    
+
     # Mock async_setup_entry um echte Coordinator-Erstellung zu verhindern
     mocker.patch(
-        "custom_components.sensorbridge_partheland.__init__.async_setup_entry",
-        return_value=True
+        "custom_components.sensorbridge_partheland.async_setup_entry",
+        new=mocker.AsyncMock(return_value=True),
+    )
+
+    # Fallback-Schutz: echte MQTT-Socketverbindung im Testlauf unterbinden
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.mqtt_service.MQTTService.connect",
+        new=mocker.AsyncMock(return_value=True),
     )
     
     # Mock die hass.data Einträge
@@ -105,6 +114,13 @@ def mock_integration_setup(mocker, mock_config_service):
     # Mock direkt in hass.data
     def setup_mock_integration(hass):
         mock_hass_data(hass)
+
+        # Verhindert das automatische echte Setup nach async_create_entry.
+        mocker.patch.object(
+            hass.config_entries,
+            "async_setup",
+            new=mocker.AsyncMock(return_value=True),
+        )
         
         # Mock die _async_initialize_config_service Methoden als AsyncMock
         async def mock_init_service(self):
@@ -373,5 +389,4 @@ async def test_integration_services_interaction(hass: HomeAssistant, mock_config
     test_data = await parser_service.parse_message("test/topic", '{"temp": 25.0}')
     assert test_data is not None
     assert isinstance(test_data, dict)
-
 

@@ -29,10 +29,32 @@ jobs:
             echo "should_run=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Python-Version dynamisch aus PHACC ermitteln
+        if: steps.timecheck.outputs.should_run == 'true'
+        id: phacc-python
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import urllib.request
+
+          url = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master/setup.py"
+          with urllib.request.urlopen(url, timeout=30) as response:
+              setup_py = response.read().decode("utf-8")
+
+          python_match = re.search(r'python_requires=">=([0-9]+\.[0-9]+)"', setup_py)
+          python_version = python_match.group(1) if python_match else "3.14"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"python_version={python_version}\n")
+
+          print(f"Python {python_version}")
+          PY
+
       - name: Python einrichten
         uses: actions/setup-python@v6
         with:
-          python-version: '3.14.2'
+          python-version: ${{ steps.phacc-python.outputs.python_version }}
         if: steps.timecheck.outputs.should_run == 'true'
 
       - name: Requirements aktualisieren (nur patch/minor)
@@ -47,7 +69,7 @@ jobs:
             echo "homeassistant_version=" >> $GITHUB_OUTPUT
           else
             # Extrahiere neue HA-Version aus requirements_test.txt
-            HA_VERSION=$(grep "^homeassistant" requirements_test.txt | sed 's/.*>= *//')
+            HA_VERSION=$(grep "^homeassistant" requirements_test.txt | sed -E 's/^[^#]*homeassistant[[:space:]]*(==|>=)[[:space:]]*//')
             echo "ha_updated=true" >> $GITHUB_OUTPUT
             echo "homeassistant_version=$HA_VERSION" >> $GITHUB_OUTPUT
             echo "Home Assistant wird auf Version $HA_VERSION aktualisiert"
