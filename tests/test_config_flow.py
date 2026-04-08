@@ -114,6 +114,13 @@ def mock_integration_setup(mocker, mock_config_service):
     # Mock direkt in hass.data
     def setup_mock_integration(hass):
         mock_hass_data(hass)
+
+        # Verhindert das automatische echte Setup nach async_create_entry.
+        mocker.patch.object(
+            hass.config_entries,
+            "async_setup",
+            new=mocker.AsyncMock(return_value=True),
+        )
         
         # Mock die _async_initialize_config_service Methoden als AsyncMock
         async def mock_init_service(self):
