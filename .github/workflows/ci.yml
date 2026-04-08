@@ -20,62 +20,20 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Test-Stack dynamisch aus PHACC ermitteln
-        id: test-stack
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import re
-          import urllib.request
-
-          url = "https://pypi.org/pypi/pytest-homeassistant-custom-component/json"
-          with urllib.request.urlopen(url, timeout=30) as response:
-              data = json.load(response)
-
-          phacc_version = data["info"]["version"]
-          requires_python = data["info"].get("requires_python") or ">=3.14"
-          python_match = re.search(r"(\d+\.\d+)", requires_python)
-          python_version = python_match.group(1) if python_match else "3.14"
-
-          homeassistant_version = ""
-          for requirement in data["info"].get("requires_dist") or []:
-              normalized = requirement.strip().lower()
-              if normalized.startswith("homeassistant=="):
-                  homeassistant_version = requirement.split("==", 1)[1].split(";", 1)[0].strip()
-                  break
-
-          if not homeassistant_version:
-              raise SystemExit("Konnte Home-Assistant-Version aus PHACC-Metadaten nicht ermitteln.")
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"python_version={python_version}\n")
-              output.write(f"phacc_version={phacc_version}\n")
-              output.write(f"homeassistant_version={homeassistant_version}\n")
-
-          print(f"Python {python_version}, PHACC {phacc_version}, Home Assistant {homeassistant_version}")
-          PY
-
       - name: Python einrichten
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ steps.test-stack.outputs.python_version }}
+          python-version: '3.14.2'
 
       - name: Test- und Lint-Abhängigkeiten installieren
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements_test.txt ]; then
-            grep -Eiv '^[[:space:]]*(homeassistant|pytest-homeassistant-custom-component)[[:space:]]*(==|>=|<=|~=|>|<)' requirements_test.txt > /tmp/requirements_test_base.txt
-            if [ -s /tmp/requirements_test_base.txt ]; then
-              pip install -r /tmp/requirements_test_base.txt
-            fi
+            pip install -r requirements_test.txt
           else
             echo "requirements_test.txt nicht gefunden – installiere Minimal-Set"
             pip install flake8 pytest pytest-asyncio pytest-cov pytest-mock
           fi
-
-          pip install "pytest-homeassistant-custom-component==${{ steps.test-stack.outputs.phacc_version }}"
-          pip install "homeassistant==${{ steps.test-stack.outputs.homeassistant_version }}" --force-reinstall
 
       - name: Lint (flake8)
         run: |
@@ -91,3 +49,6 @@ jobs:
             exit 0
           fi
           exit $code
+
+
+

@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Repository auschecken
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
@@ -54,29 +54,34 @@ jobs:
         id: test-stack
         run: |
           python3 - <<'PY'
-          import json
           import os
           import re
           import urllib.request
 
-          url = "https://pypi.org/pypi/pytest-homeassistant-custom-component/json"
-          with urllib.request.urlopen(url, timeout=30) as response:
-              data = json.load(response)
+          base_url = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master"
 
-          phacc_version = data["info"]["version"]
-          requires_python = data["info"].get("requires_python") or ">=3.14"
-          python_match = re.search(r"(\d+\.\d+)", requires_python)
+          def fetch_text(path: str) -> str:
+              with urllib.request.urlopen(f"{base_url}/{path}", timeout=30) as response:
+                  return response.read().decode("utf-8")
+
+          phacc_version = fetch_text("version").strip()
+          setup_py = fetch_text("setup.py")
+          requirements_test = fetch_text("requirements_test.txt")
+
+          python_match = re.search(r'python_requires=">=([0-9]+\.[0-9]+)"', setup_py)
           python_version = python_match.group(1) if python_match else "3.14"
 
-          homeassistant_version = ""
-          for requirement in data["info"].get("requires_dist") or []:
-              normalized = requirement.strip().lower()
-              if normalized.startswith("homeassistant=="):
-                  homeassistant_version = requirement.split("==", 1)[1].split(";", 1)[0].strip()
-                  break
+          homeassistant_match = re.search(
+              r"^homeassistant==([0-9][^\s#]*)$",
+              requirements_test,
+              re.MULTILINE,
+          )
+          homeassistant_version = (
+              homeassistant_match.group(1) if homeassistant_match else ""
+          )
 
           if not homeassistant_version:
-              raise SystemExit("Konnte Home-Assistant-Version aus PHACC-Metadaten nicht ermitteln.")
+              raise SystemExit("Konnte Home-Assistant-Version nicht aus requirements_test.txt des PHACC-Repos ermitteln.")
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"python_version={python_version}\n")

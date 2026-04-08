@@ -45,12 +45,17 @@ REQ_FILES = [
 MANIFEST_PATH = "custom_components/sensorbridge_partheland/manifest.json"
 
 
-PYTEST_HA_REQUIREMENTS_URL = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master/requirements_test.txt"
+PYTEST_HA_BASE_URL = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master"
+PYTEST_HA_REQUIREMENTS_URL = f"{PYTEST_HA_BASE_URL}/requirements_test.txt"
+PYTEST_HA_VERSION_URL = f"{PYTEST_HA_BASE_URL}/version"
 PYTEST_HA_DEPENDENT_PACKAGES: set[str] = set()
 
 README_PATH = Path("README.md")
 README_VERSION_PATTERN = re.compile(r"(Home Assistant \(Version\s*)([0-9][^)\s]*)(\s*oder neuer\))")
-README_COMPAT_PATTERN = re.compile(r"(Zuletzt erfolgreich getestet mit Home Assistant )([0-9]+(?:\.[0-9]+)*)(\.)")
+README_COMPAT_PATTERN = re.compile(
+    r"(Zuletzt erfolgreich getestet mit Home Assistant )([0-9]+(?:\.[0-9]+)*)(\.)$",
+    re.MULTILINE,
+)
 
 
 @dataclass
@@ -160,6 +165,15 @@ def fetch_pytest_ha_requirements() -> Dict[str, str]:
     return requirements
 
 
+def fetch_pytest_ha_version() -> Optional[str]:
+    """Fetch the pytest-homeassistant-custom-component version from GitHub."""
+    try:
+        with urllib.request.urlopen(PYTEST_HA_VERSION_URL, timeout=20) as resp:
+            return resp.read().decode("utf-8").strip()
+    except Exception:
+        return None
+
+
 def fetch_latest_version(package: str) -> Optional[str]:
     url = f"https://pypi.org/pypi/{package}/json"
     try:
@@ -187,7 +201,12 @@ def rebuild_line(req: Requirement, new_version: str) -> str:
     return line + "\n"
 
 
-def process_requirements_file(path: str, changes: List[str], pytest_ha_reqs: Dict[str, str]) -> None:
+def process_requirements_file(
+    path: str,
+    changes: List[str],
+    pytest_ha_reqs: Dict[str, str],
+    pytest_ha_version: Optional[str],
+) -> None:
     if not os.path.exists(path):
         return
     with open(path, "r", encoding="utf-8") as fh:
@@ -205,6 +224,25 @@ def process_requirements_file(path: str, changes: List[str], pytest_ha_reqs: Dic
         pkg_name = req.package.lower()
         base_pkg = pkg_name  # extras already separated
 
+        if base_pkg == "pytest-homeassistant-custom-component" and pytest_ha_version:
+            target_version = pytest_ha_version
+
+            if target_version == req.version:
+                updated_lines.append(line)
+            elif numeric_tuple(target_version) >= numeric_tuple(req.version):
+                new_line = rebuild_line(req, target_version)
+                if new_line != line:
+                    updated_lines.append(new_line)
+                    file_changed = True
+                    changes.append(
+                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (from pytest-homeassistant-custom-component GitHub repo)"
+                    )
+                else:
+                    updated_lines.append(line)
+            else:
+                updated_lines.append(line)
+            continue
+
         if base_pkg in PYTEST_HA_DEPENDENT_PACKAGES and base_pkg in pytest_ha_reqs:
             target_version = pytest_ha_reqs[base_pkg]
 
@@ -213,14 +251,16 @@ def process_requirements_file(path: str, changes: List[str], pytest_ha_reqs: Dic
                 changes.append(f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (SKIPPED - beta version)")
                 continue
 
-            utype = update_type(req.version, target_version)
-
-            if utype in ('patch', 'minor') and numeric_tuple(target_version) >= numeric_tuple(req.version):
+            if target_version == req.version:
+                updated_lines.append(line)
+            elif numeric_tuple(target_version) >= numeric_tuple(req.version):
                 new_line = rebuild_line(req, target_version)
                 if new_line != line:
                     updated_lines.append(new_line)
                     file_changed = True
-                    changes.append(f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (from pytest-homeassistant-custom-component)")
+                    changes.append(
+                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (from pytest-homeassistant-custom-component GitHub repo)"
+                    )
                 else:
                     updated_lines.append(line)
             else:
@@ -291,7 +331,7 @@ def update_readme(homeassistant_version: Optional[str], changes: List[str]) -> N
         return f"{match.group(1)}{homeassistant_version}{match.group(3)}"
 
     new_text, count = README_VERSION_PATTERN.subn(_replace_version, text, count=1)
-    if count:
+    if count and new_text != text:
         text = new_text
         updated = True
 
@@ -301,7 +341,7 @@ def update_readme(homeassistant_version: Optional[str], changes: List[str]) -> N
         return compat_line
 
     new_text, count = README_COMPAT_PATTERN.subn(_replace_compat, text, count=1)
-    if count:
+    if count and new_text != text:
         text = new_text
         updated = True
     else:
@@ -381,14 +421,19 @@ def main() -> int:
 
     print('Fetching pytest-homeassistant-custom-component requirements...')
     pytest_ha_reqs = fetch_pytest_ha_requirements()
+    pytest_ha_version = fetch_pytest_ha_version()
     if pytest_ha_reqs:
         print(f"Loaded {len(pytest_ha_reqs)} requirements from pytest-homeassistant-custom-component")
         print(f"Tracking {len(PYTEST_HA_DEPENDENT_PACKAGES)} packages for dependency alignment")
     else:
         print('Warning: Could not fetch pytest-homeassistant-custom-component requirements')
+    if pytest_ha_version:
+        print(f"Loaded pytest-homeassistant-custom-component version {pytest_ha_version} from GitHub")
+    else:
+        print('Warning: Could not fetch pytest-homeassistant-custom-component version from GitHub')
 
     for path in REQ_FILES:
-        process_requirements_file(path, changes, pytest_ha_reqs)
+        process_requirements_file(path, changes, pytest_ha_reqs, pytest_ha_version)
     process_manifest(MANIFEST_PATH, changes)
 
     ha_version = extract_homeassistant_version('requirements_test.txt')

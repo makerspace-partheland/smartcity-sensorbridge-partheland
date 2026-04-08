@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Zeitgesteuerte Ausführung (nur 05:00 Europa/Berlin)
         id: timecheck
@@ -34,17 +34,15 @@ jobs:
         id: phacc-python
         run: |
           python3 - <<'PY'
-          import json
           import os
           import re
           import urllib.request
 
-          url = "https://pypi.org/pypi/pytest-homeassistant-custom-component/json"
+          url = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master/setup.py"
           with urllib.request.urlopen(url, timeout=30) as response:
-              data = json.load(response)
+              setup_py = response.read().decode("utf-8")
 
-          requires_python = data["info"].get("requires_python") or ">=3.14"
-          python_match = re.search(r"(\d+\.\d+)", requires_python)
+          python_match = re.search(r'python_requires=">=([0-9]+\.[0-9]+)"', setup_py)
           python_version = python_match.group(1) if python_match else "3.14"
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
@@ -71,7 +69,7 @@ jobs:
             echo "homeassistant_version=" >> $GITHUB_OUTPUT
           else
             # Extrahiere neue HA-Version aus requirements_test.txt
-            HA_VERSION=$(grep "^homeassistant" requirements_test.txt | sed 's/.*>= *//')
+            HA_VERSION=$(grep "^homeassistant" requirements_test.txt | sed -E 's/^[^#]*homeassistant[[:space:]]*(==|>=)[[:space:]]*//')
             echo "ha_updated=true" >> $GITHUB_OUTPUT
             echo "homeassistant_version=$HA_VERSION" >> $GITHUB_OUTPUT
             echo "Home Assistant wird auf Version $HA_VERSION aktualisiert"
@@ -79,7 +77,7 @@ jobs:
 
       - name: Pull Request erstellen
         if: steps.timecheck.outputs.should_run == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.WORKFLOW_PAT }}
           commit-message: |
