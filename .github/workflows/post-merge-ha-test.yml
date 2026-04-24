@@ -3,12 +3,11 @@ name: Post-Merge HA Compatibility Test
 on:
   push:
     branches: [main]
-  pull_request_target:
+  pull_request:
     branches: [main]
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   ha-compatibility-test:
@@ -26,7 +25,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request_target" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             BASE_BRANCH="${GITHUB_BASE_REF}"
             git fetch origin "${BASE_BRANCH}" --depth=1
             DIFF_BASE="origin/${BASE_BRANCH}"
@@ -136,37 +135,6 @@ jobs:
             echo "test_summary=Tests fehlgeschlagen mit HA ${{ steps.test-stack.outputs.homeassistant_version }}" >> "${GITHUB_OUTPUT}"
             exit 1
           fi
-
-      - name: Issue für fehlgeschlagene Tests erstellen
-        if: github.event_name == 'push' && steps.check-needed.outputs.test_needed == 'true' && steps.tests.outputs.test_status == 'failed'
-        env:
-          HA_VERSION: ${{ steps.test-stack.outputs.homeassistant_version }}
-          TEST_SUMMARY: ${{ steps.tests.outputs.test_summary }}
-          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          ISSUE_BODY=$(cat <<EOF
-          ## Home Assistant Kompatibilitätsproblem
-
-          **Home Assistant Version:** ${HA_VERSION}
-          **Test-Ergebnis:** ${TEST_SUMMARY}
-          **Workflow:** [Details](${WORKFLOW_URL})
-
-          ### ToDos
-          - [ ] Problem analysieren
-          - [ ] Code für HA ${HA_VERSION} anpassen
-          - [ ] Tests erneut ausführen
-          - [ ] Mit neuer Home Assistant Version prüfen
-
-          ---
-          *Automatisch erstellt durch GitHub Actions nach einem Dependency-Update*
-          EOF
-          )
-
-          curl -sS -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/issues" \
-            -d "$(jq -n --arg title "HA ${HA_VERSION} Kompatibilitätsproblem" --arg body "$ISSUE_BODY" '{title:$title, body:$body, labels:["bug","home-assistant","compatibility"]}')"
 
       - name: Erfolg dokumentieren
         if: steps.check-needed.outputs.test_needed == 'true' && (steps.tests.outputs.test_status == 'success' || steps.tests.outputs.test_status == 'no-tests')
