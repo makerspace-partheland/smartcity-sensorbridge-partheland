@@ -245,6 +245,7 @@ def process_requirements_file(
 
         if base_pkg in PYTEST_HA_DEPENDENT_PACKAGES and base_pkg in pytest_ha_reqs:
             target_version = pytest_ha_reqs[base_pkg]
+            target_source = "from pytest-homeassistant-custom-component GitHub repo"
 
             if base_pkg == 'homeassistant' and is_homeassistant_beta(target_version):
                 updated_lines.append(line)
@@ -259,7 +260,7 @@ def process_requirements_file(
                     updated_lines.append(new_line)
                     file_changed = True
                     changes.append(
-                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (from pytest-homeassistant-custom-component GitHub repo)"
+                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} ({target_source})"
                     )
                 else:
                     updated_lines.append(line)
@@ -453,5 +454,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

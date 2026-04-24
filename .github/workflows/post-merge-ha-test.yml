@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 3 * * 5' # Freitags 03:00 UTC (05:00 CET)
+    - cron: '0 4 * * 5' # Freitags 04:00 UTC (05:00 CEST)
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,7 +29,21 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+            HOUR=$(TZ=Europe/Berlin date +'%H')
+            if [ "$HOUR" != "05" ]; then
+              echo "test_needed=false" >> "${GITHUB_OUTPUT}"
+              echo "Zeitgesteuerte Ausführung außerhalb 05:00 Europe/Berlin - Test wird übersprungen"
+              exit 0
+            fi
+            echo "test_needed=true" >> "${GITHUB_OUTPUT}"
+            echo "Zeitgesteuerte Ausführung um 05:00 Europe/Berlin - HA-Test wird ausgeführt"
+            exit 0
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "test_needed=true" >> "${GITHUB_OUTPUT}"
+            echo "Manuelle Ausführung - HA-Test wird ausgeführt"
+            exit 0
+          elif [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             BASE_BRANCH="${GITHUB_BASE_REF}"
             git fetch origin "${BASE_BRANCH}" --depth=1
             DIFF_BASE="origin/${BASE_BRANCH}"
