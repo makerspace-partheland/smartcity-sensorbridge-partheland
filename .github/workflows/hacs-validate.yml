@@ -1,7 +1,7 @@
 name: HACS Validation
 
 on:
-  pull_request_target:
+  pull_request:
   schedule:
     - cron: '0 3 * * 5'  # CET → 05:00 Europe/Berlin
     - cron: '0 4 * * 5'  # CEST → 05:00 Europe/Berlin
@@ -36,5 +36,4 @@ jobs:
         with:
           category: integration
           ignore: brands images
-
 
