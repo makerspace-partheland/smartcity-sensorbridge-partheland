@@ -114,7 +114,7 @@ logger:
 
 ## Updates
 
-- **Automatisch**: HACS zeigt Updates an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell (Patch/Minor) und erstellen PRs. Dependabot aktualisiert GitHub Actions-Versionen automatisch. Die Integration wird durch die Automatisierung eigenständig gepflegt und führt erfolgreiche Abhängigkeits-PRs nach bestandenem CI- und HA-Kompatibilitätscheck automatisch zusammen. Zuletzt erfolgreich getestet mit Home Assistant 2026.4.3.
+- **Automatisch**: HACS zeigt Updates an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell und erstellen PRs. Dependabot aktualisiert GitHub Actions-Versionen zeitversetzt. Erfolgreiche Abhängigkeits-PRs werden nach bestandenem CI- und HA-Kompatibilitätscheck zusammengeführt. Größere Versionswechsel werden getrennt geprüft. Zuletzt erfolgreich getestet mit Home Assistant 2026.4.3.
 - **Manuell**: Neue Version herunterladen.
 
 ## Unterstützung
