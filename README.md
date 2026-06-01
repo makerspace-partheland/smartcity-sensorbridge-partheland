@@ -1,111 +1,83 @@
 # SmartCity SensorBridge Partheland
 
-## Was ist das?
+## Sensorwerte aus dem Partheland in Home Assistant
 
-Diese Custom Integration verbindet Dein Home Assistant mit dem SmartCity-Netzwerk Partheland und zeigt Umweltdaten von lokalen Sensoren im Partheland direkt in Deinem Smart Home an. Die Daten kommen von Sensoren in Deiner Region und werden in Echtzeit aktualisiert.
+Diese Custom Integration holt Umweltdaten aus dem SmartCity-Netzwerk Partheland in Home Assistant. So landen Messwerte lokaler Stationen im Dashboard und können auch für Automationen genutzt werden.
 
-## Was können wir damit machen?
+## Welche Daten die Integration einbindet
 
-- **Umweltdaten anzeigen**: Temperatur, Luftfeuchte, Luftqualität und mehr
-- **Lokale Sensordaten**: Umweltinformationen von Sensoren in Ihrer Nähe
-- **Automatisierungen**: Reagieren Sie auf Umweltveränderungen
-- **Dashboard**: Schöne Übersichten in der Home Assistant Oberfläche
+Die SensorBridge liest Daten von senseBox:home-Stationen und LoRaWAN-Sensoren aus der Region Partheland. Dazu kommen Medianwerte, die aus mehreren Stationen pro Ort oder für das gesamte Partheland berechnet werden.
 
-## Welche Daten sehen wir?
-
-### senseBox:home Stationen
-
-Die Integration unterstützt senseBox:home Umweltstationen in verschiedenen Orten der Region Partheland:
+## Messwerte der senseBox:home-Stationen
 
 - **Temperatur**: Lufttemperatur
-- **Luftfeuchte**: Relative Luftfeuchte
-- **Luftdruck**: Atmosphärischer Druck
-- **Feinstaub**: PM10 und PM2.5 Werte
+- **Luftfeuchte**: relative Luftfeuchte
+- **Luftdruck**: atmosphärischer Druck
+- **Feinstaub**: PM10- und PM2.5-Werte
 - **Beleuchtungsstärke**: Lichtintensität
 - **UV-Intensität**: Sonnenstrahlung
 - **Lautstärke**: Umgebungsgeräusche
 
-### LoRaWAN Sensoren
+## Messwerte der LoRaWAN-Sensoren
 
 - **Temperatursensoren**: Luft- und Wassertemperaturen
 - **Wasserpegel**: Pegelstände von Gewässern
 
-### Median-Entities
-
-Ausfallsichere Median-Werte für verschiedene Orte, berechnet aus mehreren Stationen je Ort oder dem gesamten Partheland.
-
-## Was brauchen wir?
+## Was vorher installiert sein muss
 
 - Python 3.13.2 oder neuer
-- Home Assistant (Version 2026.5.4 oder neuer)
-- HACS (Home Assistant Community Store) - für die einfache Installation
+- Home Assistant 2026.5.4 oder neuer
+- HACS (Home Assistant Community Store) für die einfache Installation
 - Internetverbindung
 
-## Installation
+## Installation über HACS
 
-### Installation über HACS (Empfohlen)
-
-1. **Repository in HACS hinzufügen (Custom Repository)**:
-   - Öffne  HACS in der Seitenleiste
-   - Klicken auf **⋯** (drei Punkte oben rechts)
-   - Wähle  **Benutzerdefiniertes Repository**
+1. **Repository in HACS hinzufügen**
+   - Öffne HACS in der Seitenleiste
+   - Klicke auf **⋯** (drei Punkte oben rechts)
+   - Wähle **Benutzerdefiniertes Repository**
    - Füge diese URL hinzu: `https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland`
-   - Typ: Integration
-   - Klicke  auf Hinzufügen
+   - Wähle als Typ **Integration**
+   - Klicke auf **Hinzufügen**
 
 2. **Integration installieren**
    - Öffne in HACS den Bereich **Integrationen**
-   - Klicke  auf ***SmartCity SensorBridge Partheland*** → **Installieren**
+   - Wähle **SmartCity SensorBridge Partheland** und klicke auf **Installieren**
    - Starte Home Assistant neu
 
-3. **Integration einrichten**:
+3. **Integration einrichten**
    - Gehe zu **Einstellungen** → **Geräte & Dienste**
    - Klicke auf **+ Integration hinzufügen**
    - Suche nach "SmartCity SensorBridge Partheland"
    - Folge der Einrichtung
 
-### Manuelle Installation (für Fortgeschrittene)
+## Manuelle Installation
 
 1. Lade die Dateien herunter
-2. Kopiere den Ordner `custom_components/sensorbridge_partheland/` in Dein Home Assistant
+2. Kopiere den Ordner `custom_components/sensorbridge_partheland/` in deine Home-Assistant-Installation
 3. Starte Home Assistant neu
 
-## Einrichtung
+## Nach der Installation
 
-Die Integration ist sehr einfach zu konfigurieren:
+Die Standardeinstellungen reichen für den Start. Home Assistant lädt die verfügbaren Sensoren und legt die passenden Geräte und Entitäten an.
 
-1. **Integration hinzufügen** (siehe Installation oben)
-2. **Konfiguration bestätigen** - die Standardeinstellungen funktionieren sofort
-3. **Fertig!**
-
-Die Integration lädt automatisch alle verfügbaren Sensoren und zeigt sie in Home Assistant an.
-
-## Hilfe bei Problemen
-
-### Häufige Fragen
-
-#### Ich sehe keine Daten
+## Wenn keine Daten ankommen
 
 - Prüfe, ob die Integration korrekt installiert ist
-- Schaue in die Logs (siehe unten)
+- Schalte die Debug-Logs ein
 
-#### Die Werte sind falsch
+## Wenn Werte nicht plausibel wirken
 
-- Kontaktiere uns bei Problemen
+Melde das Problem über GitHub Issues oder über den Kontakt unten.
 
-#### Wie aktualisiere ich die Integration?
+## Geräte und Entitäten entfernen
 
-- Über HACS: Automatische Updates
-- Manuell: Neue Version herunterladen
+- Über die Geräte-Ansicht: **Einstellungen** → **Geräte & Dienste** → **Geräte** → Gerät öffnen → **⋯** → **Gerät löschen**. Zugehörige Entitäten werden mit entfernt.
+- Über die Integrations-Optionen: Integration öffnen → **Optionen** → Gerät oder Median-Entity abwählen → **Speichern**. Beim anschließenden Reload bereinigt die Integration nicht mehr ausgewählte Entitäten und Geräte aus den Registern.
 
-#### Wie entferne ich ein Gerät/Entitäten?
+## Debug-Logs einschalten
 
-- Über die Geräte-Ansicht: Einstellungen → Geräte & Dienste → Geräte → Gerät öffnen → 3-Punkte → Gerät löschen. Die Integration unterstützt das direkte Entfernen; dabei werden zugehörige Entitäten mit entfernt.
-- Über die Integrations-Optionen: Integration öffnen → Optionen → das Gerät (oder Median-Entity) abwählen → Speichern. Beim anschließenden Reload werden nicht mehr ausgewählte Entitäten/Geräte automatisch aus den Registern bereinigt.
-
-### Logs prüfen
-
-Fügen dies zu Deiner `configuration.yaml` hinzu:
+Füge diese Einstellung zu deiner `configuration.yaml` hinzu:
 
 ```yaml
 logger:
@@ -114,8 +86,9 @@ logger:
 
 ## Updates
 
-- **Automatisch**: HACS zeigt Updates an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell und erstellen PRs. Dependabot aktualisiert GitHub Actions-Versionen zeitversetzt. Erfolgreiche Abhängigkeits-PRs werden nach bestandenem CI- und HA-Kompatibilitätscheck zusammengeführt. Größere Versionswechsel werden getrennt geprüft. Zuletzt erfolgreich getestet mit Home Assistant 2026.5.4.
-- **Manuell**: Neue Version herunterladen.
+HACS zeigt neue Versionen an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell und erstellen PRs. Dependabot aktualisiert GitHub-Actions-Versionen zeitversetzt. Erfolgreiche Abhängigkeits-PRs werden nach bestandenem CI- und HA-Kompatibilitätscheck zusammengeführt. Größere Versionswechsel werden getrennt geprüft. Zuletzt erfolgreich getestet mit Home Assistant 2026.5.4.
+
+Bei manueller Installation muss die aktuelle Version heruntergeladen und über die vorhandenen Dateien kopiert werden.
 
 ## Unterstützung
 
@@ -124,8 +97,8 @@ logger:
 
 ## Lizenz
 
-MIT License - Du kannst die Integration frei nutzen und anpassen.
+MIT License - du kannst die Integration frei nutzen und anpassen.
 
 ---
 
-**Tipp**: Diese Integration ist Teil des SmartCity-Projekts Partheland. Weitere Informationen findest Du auf [makerspace-partheland.de](https://makerspace-partheland.de).
+Die Integration ist Teil des SmartCity-Projekts Partheland. Weitere Informationen stehen auf [makerspace-partheland.de](https://makerspace-partheland.de).
