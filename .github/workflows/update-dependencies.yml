@@ -2,9 +2,10 @@ name: Wöchentliche Abhängigkeitsaktualisierung (pip + manifest)
 
 on:
   schedule:
-    # GitHub cron ist UTC. Zwei Zeiten decken CET/CEST ab und wir gardern zur lokalen Zeit 05:00 Europe/Berlin.
-    - cron: '0 3 * * 5' # Freitags 03:00 UTC (05:00 CET)
-    - cron: '0 4 * * 5' # Freitags 04:00 UTC (05:00 CEST)
+    # GitHub cron ist UTC. Ein Termin trifft die CET-Woche, der andere die CEST-Woche.
+    # Kein zusätzlicher Stunden-Guard: verspätete Scheduler-Runs dürfen nicht stillschweigend übersprungen werden.
+    - cron: '0 3 * * 5' # Freitags 03:00 UTC
+    - cron: '0 4 * * 5' # Freitags 04:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -18,19 +19,7 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v6
 
-      - name: Zeitgesteuerte Ausführung (nur 05:00 Europa/Berlin)
-        id: timecheck
-        run: |
-          HOUR=$(TZ=Europe/Berlin date +'%H')
-          echo "Lokale Uhrzeit in Europa/Berlin: $HOUR"
-          if [ "$HOUR" = "05" ]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Python-Version dynamisch aus PHACC ermitteln
-        if: steps.timecheck.outputs.should_run == 'true'
         id: phacc-python
         run: |
           python3 - <<'PY'
@@ -55,10 +44,8 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: ${{ steps.phacc-python.outputs.python_version }}
-        if: steps.timecheck.outputs.should_run == 'true'
 
       - name: Requirements aktualisieren (nur patch/minor)
-        if: steps.timecheck.outputs.should_run == 'true'
         id: update-deps
         run: |
           python .github/scripts/update_requirements.py
@@ -76,7 +63,6 @@ jobs:
           fi
 
       - name: Pull Request erstellen
-        if: steps.timecheck.outputs.should_run == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.WORKFLOW_PAT }}
