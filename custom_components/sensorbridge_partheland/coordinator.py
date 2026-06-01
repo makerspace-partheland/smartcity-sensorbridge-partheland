@@ -144,6 +144,11 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         """Beendet den Coordinator."""
         try:
             _LOGGER.debug("Beende Coordinator")
+
+            # DataUpdateCoordinator-Shutdown räumt den Debouncer-Timer und
+            # geplante Refreshes auf. Ohne diesen Aufruf bleibt beim Reload ein
+            # schwebender Timer zurück.
+            await super().async_shutdown()
             
             # MQTT-Topics kündigen
             await self._unsubscribe_from_topics()

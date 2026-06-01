@@ -17,11 +17,13 @@ jobs:
       - name: Auto-Merge aktivieren
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
           
           echo "Aktiviere Auto-Merge für Weekly Deps PR #${PR_NUMBER}..."
           gh pr merge ${PR_NUMBER} \
+            --repo "${GH_REPO}" \
             --auto \
             --squash \
             --delete-branch \

@@ -49,17 +49,14 @@ jobs:
         id: update-deps
         run: |
           python .github/scripts/update_requirements.py
-
-          # Prüfe ob Home Assistant aktualisiert wurde
-          if git diff --quiet requirements_test.txt; then
-            echo "ha_updated=false" >> $GITHUB_OUTPUT
-            echo "homeassistant_version=" >> $GITHUB_OUTPUT
-          else
-            # Extrahiere neue HA-Version aus requirements_test.txt
+          if git diff --unified=0 -- requirements_test.txt | grep -Eq '^[+-]homeassistant[[:space:]]'; then
             HA_VERSION=$(grep "^homeassistant" requirements_test.txt | sed -E 's/^[^#]*homeassistant[[:space:]]*(==|>=)[[:space:]]*//')
             echo "ha_updated=true" >> $GITHUB_OUTPUT
             echo "homeassistant_version=$HA_VERSION" >> $GITHUB_OUTPUT
             echo "Home Assistant wird auf Version $HA_VERSION aktualisiert"
+          else
+            echo "ha_updated=false" >> $GITHUB_OUTPUT
+            echo "homeassistant_version=" >> $GITHUB_OUTPUT
           fi
 
       - name: Pull Request erstellen
@@ -70,12 +67,9 @@ jobs:
             deps: wöchentliche Abhängigkeitsaktualisierungen (patch/minor)
           title: "deps: wöchentliche Abhängigkeitsaktualisierungen (patch/minor)"
           body: |
-            Automatisierte wöchentliche Abhängigkeitsaktualisierung für pip-Requirements und manifest.
-            - Wendet nur patch/minor Updates an
-            - Überspringt Major-Updates und Major-Updates sensibler Pakete
-            - Berücksichtigt pytest-homeassistant-custom-component Abhängigkeitsketten
+            Automatische Aktualisierung der Python-Abhängigkeiten.
 
-            ${{ steps.update-deps.outputs.ha_updated == 'true' && format('## Home Assistant Update{0}{0}**Neue Version:** {1}{0}{0}**Info:** Nach dem Merge wird automatisch ein Kompatibilitätstest mit dieser HA-Version ausgeführt.', fromJSON('"\n"'), steps.update-deps.outputs.homeassistant_version) || '' }}
+            ${{ steps.update-deps.outputs.ha_updated == 'true' && format('Home Assistant: {0}', steps.update-deps.outputs.homeassistant_version) || '' }}
           labels: dependencies, python
           branch: chore/weekly-deps-update
           delete-branch: true

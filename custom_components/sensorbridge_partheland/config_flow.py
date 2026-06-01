@@ -237,11 +237,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             self.config_entry, data=new_data
         )
 
-        # Integration neu laden, damit die geänderte Gerätauswahl sofort
-        # angewendet wird und neue Entities/Devices angelegt werden
-        self.hass.async_create_task(
-            self.hass.config_entries.async_reload(self.config_entry.entry_id)
-        )
+        # Integration synchron neu laden, damit kein schwebender Reload-Task
+        # im Test- oder Shutdown-Pfad zurückbleibt.
+        await self.hass.config_entries.async_reload(self.config_entry.entry_id)
 
         return self.async_create_entry(title="", data={})
 

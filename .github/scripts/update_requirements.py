@@ -247,10 +247,17 @@ def process_requirements_file(
             target_version = pytest_ha_reqs[base_pkg]
             target_source = "from pytest-homeassistant-custom-component GitHub repo"
 
-            if base_pkg == 'homeassistant' and is_homeassistant_beta(target_version):
-                updated_lines.append(line)
-                changes.append(f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (SKIPPED - beta version)")
-                continue
+            if base_pkg == "homeassistant" and is_homeassistant_beta(target_version):
+                stable_homeassistant = fetch_latest_version(base_pkg)
+                if stable_homeassistant:
+                    target_version = stable_homeassistant
+                    target_source = "latest stable version from PyPI (PHACC target is beta)"
+                else:
+                    updated_lines.append(line)
+                    changes.append(
+                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (SKIPPED - beta version)"
+                    )
+                    continue
 
             if target_version == req.version:
                 updated_lines.append(line)
