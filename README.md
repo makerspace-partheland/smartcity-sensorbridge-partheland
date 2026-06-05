@@ -26,7 +26,7 @@ Die SensorBridge liest Daten von senseBox:home-Stationen und LoRaWAN-Sensoren au
 ## Was vorher installiert sein muss
 
 - Python 3.13.2 oder neuer
-- Home Assistant 2026.5.4 oder neuer
+- Home Assistant 2026.6.0 oder neuer
 - HACS (Home Assistant Community Store) für die einfache Installation
 - Internetverbindung
 
@@ -86,7 +86,7 @@ logger:
 
 ## Updates
 
-HACS zeigt neue Versionen an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell und erstellen PRs. Dependabot aktualisiert GitHub-Actions-Versionen zeitversetzt. Erfolgreiche Abhängigkeits-PRs werden nach bestandenem CI- und HA-Kompatibilitätscheck zusammengeführt. Größere Versionswechsel werden getrennt geprüft. Zuletzt erfolgreich getestet mit Home Assistant 2026.5.4.
+HACS zeigt neue Versionen an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell und erstellen PRs. Dependabot aktualisiert GitHub-Actions-Versionen zeitversetzt. Erfolgreiche Abhängigkeits-PRs werden nach bestandenem CI- und HA-Kompatibilitätscheck zusammengeführt. Größere Versionswechsel werden getrennt geprüft. Zuletzt erfolgreich getestet mit Home Assistant 2026.6.0.
 
 Bei manueller Installation muss die aktuelle Version heruntergeladen und über die vorhandenen Dateien kopiert werden.
 
