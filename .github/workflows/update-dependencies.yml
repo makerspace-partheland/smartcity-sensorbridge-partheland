@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
 
       - name: Python-Version dynamisch aus PHACC ermitteln
         id: phacc-python
