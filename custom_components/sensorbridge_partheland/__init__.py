@@ -10,18 +10,81 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
+from .api_client import DeviceCatalogError
 from .config_service import ConfigService
-from .const import DOMAIN, PLATFORMS, CONF_SELECTED_DEVICES, CONF_SELECTED_MEDIAN_ENTITIES
+from .const import (
+    CONFIG_ENTRY_VERSION,
+    CONF_DEVICE_METADATA,
+    CONF_SELECTED_DEVICES,
+    CONF_SELECTED_MEDIAN_ENTITIES,
+    DOMAIN,
+    PLATFORMS,
+)
 from .entity_factory import EntityFactory
 from .error_handler import ErrorHandler
 from .mqtt_service import MQTTService
 from .parser_service import ParserService
 from .translation_helper import TranslationHelper
-from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import device_registry as dr
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> bool:
+    """Migriert bestehende Config Entries auf den API-basierten Katalog."""
+    if config_entry.version >= CONFIG_ENTRY_VERSION:
+        return True
+
+    service = ConfigService(hass)
+    data = dict(config_entry.data)
+    service.register_entry_data(data)
+    selected_ids = list(data.get(CONF_SELECTED_DEVICES, []))
+
+    try:
+        await service.async_get_catalog()
+        metadata = await service.snapshot_devices(selected_ids)
+    except DeviceCatalogError:
+        stored = data.get(CONF_DEVICE_METADATA, {})
+        metadata = {
+            device_id: dict(stored.get(device_id, {}))
+            if isinstance(stored, dict)
+            and isinstance(stored.get(device_id), dict)
+            else {
+                "id": device_id,
+                "name": device_id,
+                "type": "Unknown",
+                "sensors": [],
+                "sensor_metadata": {},
+            }
+            for device_id in selected_ids
+        }
+
+    aliases = await service.get_field_aliases()
+    registry = er.async_get(hass)
+    for registry_entry in registry.entities.values():
+        if registry_entry.config_entry_id != config_entry.entry_id:
+            continue
+        for device_id in selected_ids:
+            prefix = f"{device_id}_"
+            if not registry_entry.unique_id.startswith(prefix):
+                continue
+            raw_name = registry_entry.unique_id[len(prefix) :]
+            if raw_name == "__device_meta":
+                continue
+            sensor_name = aliases.get(raw_name, raw_name)
+            sensors = metadata[device_id].setdefault("sensors", [])
+            if sensor_name not in sensors:
+                sensors.append(sensor_name)
+
+    data[CONF_DEVICE_METADATA] = metadata
+    hass.config_entries.async_update_entry(
+        config_entry, data=data, version=CONFIG_ENTRY_VERSION
+    )
+    return True
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:

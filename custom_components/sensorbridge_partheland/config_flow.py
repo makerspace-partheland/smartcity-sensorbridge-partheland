@@ -6,9 +6,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
@@ -24,6 +22,7 @@ from .const import (
     CONF_DEVICE_METADATA,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
+    CONFIG_ENTRY_VERSION,
     DOMAIN,
     ERROR_CANNOT_CONNECT,
     ERROR_NO_SELECTION,
@@ -33,7 +32,7 @@ from .const import (
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Konfiguriert SensorBridge Partheland."""
 
-    VERSION = 2
+    VERSION = CONFIG_ENTRY_VERSION
 
     def __init__(self) -> None:
         self.config_service: ConfigService | None = None
@@ -126,58 +125,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "median_count": str(len(self.median_entities)),
             },
         )
-
-    async def async_migrate_entry(
-        self, hass: HomeAssistant, config_entry: config_entries.ConfigEntry
-    ) -> bool:
-        if config_entry.version >= self.VERSION:
-            return True
-
-        service = ConfigService(hass)
-        data = dict(config_entry.data)
-        service.register_entry_data(data)
-        selected_ids = list(data.get(CONF_SELECTED_DEVICES, []))
-
-        try:
-            await service.async_get_catalog()
-            metadata = await service.snapshot_devices(selected_ids)
-        except DeviceCatalogError:
-            stored = data.get(CONF_DEVICE_METADATA, {})
-            metadata = {
-                device_id: dict(stored.get(device_id, {}))
-                if isinstance(stored, dict) and isinstance(stored.get(device_id), dict)
-                else {
-                    "id": device_id,
-                    "name": device_id,
-                    "type": "Unknown",
-                    "sensors": [],
-                    "sensor_metadata": {},
-                }
-                for device_id in selected_ids
-            }
-
-        aliases = await service.get_field_aliases()
-        registry = er.async_get(hass)
-        for registry_entry in registry.entities.values():
-            if registry_entry.config_entry_id != config_entry.entry_id:
-                continue
-            for device_id in selected_ids:
-                prefix = f"{device_id}_"
-                if not registry_entry.unique_id.startswith(prefix):
-                    continue
-                raw_name = registry_entry.unique_id[len(prefix) :]
-                if raw_name == "__device_meta":
-                    continue
-                sensor_name = aliases.get(raw_name, raw_name)
-                sensors = metadata[device_id].setdefault("sensors", [])
-                if sensor_name not in sensors:
-                    sensors.append(sensor_name)
-
-        data[CONF_DEVICE_METADATA] = metadata
-        hass.config_entries.async_update_entry(
-            config_entry, data=data, version=self.VERSION
-        )
-        return True
 
     @staticmethod
     def async_get_options_flow(

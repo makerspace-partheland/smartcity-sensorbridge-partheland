@@ -534,11 +534,69 @@ async def test_migration_snapshots_api_metadata_and_legacy_sensors(
         ),
     )
 
-    flow = config_entries.HANDLERS[DOMAIN]()
-    migrated = await flow.async_migrate_entry(hass, entry)
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.async_setup",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    setup_entry = mocker.patch(
+        "custom_components.sensorbridge_partheland.async_setup_entry",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    loaded = await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    assert migrated is True
+    assert loaded is True
+    setup_entry.assert_awaited_once_with(hass, entry)
     assert entry.version == 2
     assert entry.data[CONF_DEVICE_METADATA]["station"]["sensors"] == [
+        "temperature"
+    ]
+
+
+async def test_migration_loads_existing_entry_without_api(
+    hass: HomeAssistant, mocker
+):
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=NAME,
+        data={
+            CONF_SELECTED_DEVICES: ["legacy_station"],
+            CONF_SELECTED_MEDIAN_ENTITIES: ["median_Naunhof"],
+        },
+        version=1,
+        entry_id="offline-migration-entry",
+    )
+    entry.add_to_hass(hass)
+    er.async_get(hass).async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "legacy_station_Temperatur",
+        config_entry=entry,
+    )
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.config_service.ConfigService.async_get_catalog",
+        new=mocker.AsyncMock(side_effect=DeviceCatalogError("offline")),
+    )
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.async_setup",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    setup_entry = mocker.patch(
+        "custom_components.sensorbridge_partheland.async_setup_entry",
+        new=mocker.AsyncMock(return_value=True),
+    )
+
+    loaded = await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert loaded is True
+    setup_entry.assert_awaited_once_with(hass, entry)
+    assert entry.version == 2
+    assert entry.data[CONF_SELECTED_DEVICES] == ["legacy_station"]
+    assert entry.data[CONF_SELECTED_MEDIAN_ENTITIES] == ["median_Naunhof"]
+    assert entry.data[CONF_DEVICE_METADATA]["legacy_station"]["sensors"] == [
         "temperature"
     ]
