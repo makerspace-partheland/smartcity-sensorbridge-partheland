@@ -8,8 +8,13 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .api_client import DeviceCatalogError
 from .config_service import ConfigService
@@ -314,9 +319,23 @@ def _selection_schema(
         {
             vol.Optional(
                 CONF_SELECTED_DEVICES, default=selected_devices or []
-            ): cv.multi_select(devices),
+            ): _multi_select(devices),
             vol.Optional(
                 CONF_SELECTED_MEDIAN_ENTITIES, default=selected_medians or []
-            ): cv.multi_select(medians),
+            ): _multi_select(medians),
         }
+    )
+
+
+def _multi_select(options: dict[str, str]) -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(
+            options=[
+                SelectOptionDict(value=value, label=label)
+                for value, label in options.items()
+            ],
+            multiple=True,
+            mode=SelectSelectorMode.DROPDOWN,
+            custom_value=False,
+        )
     )

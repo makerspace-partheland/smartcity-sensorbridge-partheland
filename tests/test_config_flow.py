@@ -274,6 +274,14 @@ async def test_http_config_flow_happy_path(hass: HomeAssistant, hass_client, moc
     data = await resp.json()
     assert data["type"].lower() == "form"
     assert data["step_id"] == "device_selection"
+    assert [field["selector"]["select"]["multiple"] for field in data["data_schema"]] == [
+        True,
+        True,
+    ]
+    assert [len(field["selector"]["select"]["options"]) for field in data["data_schema"]] == [
+        2,
+        1,
+    ]
 
 
 async def test_http_config_flow_validation_no_selection(hass: HomeAssistant, hass_client, mock_integration_setup):
