@@ -22,11 +22,13 @@ CLIENT_ID_PREFIX: Final[str] = "hacs-sc-sensorbridge-"
 # Configuration Keys
 CONF_SELECTED_DEVICES: Final[str] = "selected_devices"
 CONF_SELECTED_MEDIAN_ENTITIES: Final[str] = "selected_median_entities"
+CONF_DEVICE_METADATA: Final[str] = "device_metadata"
 CONF_SENSOR_STATIONS: Final[str] = "sensor_stations"
 
 # Default Values
 DEFAULT_SCAN_INTERVAL: Final[int] = 30  # Health check interval for MQTT
 DEFAULT_TIMEOUT: Final[int] = 10  # Sekunden
+DEVICE_API_URL: Final[str] = "https://data.makerspace-partheland.de/v2/geojson/devices/"
 
 # Service Names
 SERVICE_RELOAD_CONFIG: Final[str] = "reload_config"

@@ -8,13 +8,14 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 import re
+from typing import Any, Dict, Iterable, List, Optional
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import CONFIG_FILE, TRANSLATIONS_DIR, DOMAIN
+from .api_client import DeviceCatalogClient, DeviceCatalogError, filter_selection_candidates
+from .const import CONFIG_FILE
 from .interfaces import ConfigServiceProtocol
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +29,9 @@ class ConfigService(ConfigServiceProtocol):
         self.hass = hass
         self._config: Optional[Dict[str, Any]] = None
         self._config_path = Path(__file__).parent / CONFIG_FILE
+        self._catalog: Optional[List[Dict[str, Any]]] = None
+        self._catalog_error: Optional[DeviceCatalogError] = None
+        self._entry_device_metadata: Dict[str, Dict[str, Any]] = {}
     
     async def load_config(self) -> Dict[str, Any]:
         """Lädt die Konfiguration asynchron."""
@@ -52,7 +56,13 @@ class ConfigService(ConfigServiceProtocol):
                 )
                 
                 # Prüfe ob erforderliche Schlüssel vorhanden sind
-                required_keys = ["mqtt_config", "known_devices", "sensor_categories", "field_mapping"]
+                required_keys = [
+                    "mqtt_config",
+                    "median_entities",
+                    "sensor_categories",
+                    "field_mapping",
+                    "field_aliases",
+                ]
                 missing_keys = [key for key in required_keys if key not in self._config]
                 
                 if missing_keys:
@@ -74,15 +84,92 @@ class ConfigService(ConfigServiceProtocol):
         """Liest die Konfigurationsdatei synchron."""
         return self._config_path.read_text(encoding='utf-8')
     
-    async def get_devices(self) -> Dict[str, Any]:
-        """Gibt alle verfügbaren Geräte zurück."""
-        config = await self.load_config()
-        return config.get("known_devices", {})
+    async def async_get_catalog(self, *, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """Lädt den Gerätekatalog aus der öffentlichen API."""
+        if self._catalog_error is not None and not force_refresh:
+            raise self._catalog_error
+        if self._catalog is None or force_refresh:
+            client = DeviceCatalogClient(async_get_clientsession(self.hass))
+            try:
+                self._catalog = await client.async_get_devices()
+                self._catalog_error = None
+            except DeviceCatalogError as error:
+                self._catalog_error = error
+                raise
+        return [dict(device) for device in self._catalog]
+
+    async def get_devices(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Gibt den vollständigen API-Gerätekatalog gruppiert zurück."""
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for device in await self.async_get_catalog():
+            grouped.setdefault(str(device["type"]), []).append(device)
+        return grouped
+
+    async def get_selection_candidates(
+        self, existing_ids: Iterable[str] = ()
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Gibt neue Auswahlkandidaten und die bestehende Auswahl zurück."""
+        existing = set(existing_ids)
+        catalog = await self.async_get_catalog()
+        candidates = filter_selection_candidates(catalog, existing)
+        present_ids = {device["id"] for device in candidates}
+
+        for device_id in existing - present_ids:
+            fallback = self._entry_device_metadata.get(device_id)
+            if fallback:
+                candidates.append(dict(fallback))
+            else:
+                candidates.append(
+                    {
+                        "id": device_id,
+                        "name": device_id,
+                        "type": "Unknown",
+                        "sensors": [],
+                        "sensor_metadata": {},
+                    }
+                )
+
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for device in sorted(
+            candidates, key=lambda item: (str(item.get("name", "")).casefold(), item["id"])
+        ):
+            grouped.setdefault(str(device.get("type", "Unknown")), []).append(device)
+        return grouped
+
+    def register_entry_data(self, entry_data: Dict[str, Any]) -> None:
+        """Registriert den im Config Entry gespeicherten Gerätestand als Fallback."""
+        metadata = entry_data.get("device_metadata", {})
+        if not isinstance(metadata, dict):
+            return
+        for device_id, device in metadata.items():
+            if isinstance(device_id, str) and isinstance(device, dict):
+                self._entry_device_metadata[device_id] = dict(device)
+
+    async def snapshot_devices(self, device_ids: Iterable[str]) -> Dict[str, Dict[str, Any]]:
+        """Erstellt den im Config Entry zu speichernden Gerätestand."""
+        selected_ids = list(dict.fromkeys(device_ids))
+        snapshot: Dict[str, Dict[str, Any]] = {}
+        for device_id in selected_ids:
+            device = await self.get_device_by_id(device_id)
+            if device:
+                snapshot[device_id] = dict(device)
+            elif device_id in self._entry_device_metadata:
+                snapshot[device_id] = dict(self._entry_device_metadata[device_id])
+            else:
+                snapshot[device_id] = {
+                    "id": device_id,
+                    "name": device_id,
+                    "type": "Unknown",
+                    "sensors": [],
+                    "sensor_metadata": {},
+                }
+        self._entry_device_metadata.update(snapshot)
+        return snapshot
     
     async def get_median_entities(self) -> List[Dict[str, Any]]:
         """Gibt alle Median-Entities zurück."""
         config = await self.load_config()
-        nested = config.get("known_devices", {}).get("MedianEntities", [])
+        nested = config.get("median_entities", [])
 
         entities_with_type: List[Dict[str, Any]] = []
         median_ids: List[str] = []
@@ -96,7 +183,7 @@ class ConfigService(ConfigServiceProtocol):
                 if "id" in copy_item:
                     median_ids.append(copy_item["id"])
 
-        _LOGGER.debug("MedianEntities geladen (known_devices): %s", median_ids)
+        _LOGGER.debug("Median-Entities geladen: %s", median_ids)
         return entities_with_type
     
     async def get_sensor_categories(self) -> Dict[str, List[str]]:
@@ -108,6 +195,21 @@ class ConfigService(ConfigServiceProtocol):
         """Gibt das Field-Mapping zurück."""
         config = await self.load_config()
         return config.get("field_mapping", {})
+
+    async def get_field_aliases(self) -> Dict[str, str]:
+        """Gibt die lokale MQTT-zu-API-Feldzuordnung zurück."""
+        config = await self.load_config()
+        aliases = config.get("field_aliases", {})
+        return aliases if isinstance(aliases, dict) else {}
+
+    async def get_canonical_sensor_name(self, field_name: str) -> str:
+        """Ordnet ein MQTT-Rohfeld dem kanonischen API-Feld zu."""
+        return (await self.get_field_aliases()).get(field_name, field_name)
+
+    async def get_legacy_sensor_names(self, sensor_name: str) -> List[str]:
+        """Gibt bekannte frühere MQTT-Feldnamen für ein API-Feld zurück."""
+        aliases = await self.get_field_aliases()
+        return [raw for raw, canonical in aliases.items() if canonical == sensor_name]
     
     async def get_mqtt_config(self) -> Dict[str, Any]:
         """Gibt die MQTT-Konfiguration zurück."""
@@ -197,7 +299,13 @@ class ConfigService(ConfigServiceProtocol):
             config = await self.load_config()
             
             # Prüfe erforderliche Top-Level-Keys
-            required_keys = ["mqtt_config", "known_devices", "sensor_categories", "field_mapping"]
+            required_keys = [
+                "mqtt_config",
+                "median_entities",
+                "sensor_categories",
+                "field_mapping",
+                "field_aliases",
+            ]
             for key in required_keys:
                 if key not in config:
                     _LOGGER.error("Erforderlicher Konfigurationsschlüssel fehlt: %s", key)
@@ -209,10 +317,8 @@ class ConfigService(ConfigServiceProtocol):
                 _LOGGER.error("Ungültige MQTT-Konfiguration")
                 return False
             
-            # Prüfe bekannte Geräte
-            known_devices = config["known_devices"]
-            if not isinstance(known_devices, dict):
-                _LOGGER.error("Ungültige Geräte-Konfiguration")
+            if not isinstance(config["median_entities"], list):
+                _LOGGER.error("Ungültige Median-Konfiguration")
                 return False
             
             _LOGGER.debug("Konfiguration erfolgreich validiert")
@@ -224,15 +330,26 @@ class ConfigService(ConfigServiceProtocol):
     
     async def get_device_by_id(self, device_id: str) -> Optional[Dict[str, Any]]:
         """Gibt ein spezifisches Gerät nach ID zurück."""
-        devices = await self.get_devices()
+        try:
+            catalog = await self.async_get_catalog()
+        except DeviceCatalogError:
+            catalog = []
 
-        # 1) Direkter Match in bekannten Geräten (inkl. Kategorien)
-        for device_type, device_list in devices.items():
-            if isinstance(device_list, list):
-                for device in device_list:
-                    if device.get("id") == device_id:
-                        device["type"] = device_type
-                        return device
+        for live_device in catalog:
+            if live_device.get("id") != device_id:
+                continue
+            device = dict(live_device)
+            stored = self._entry_device_metadata.get(device_id, {})
+            live_sensors = device.get("sensors", [])
+            stored_sensors = stored.get("sensors", [])
+            if not live_sensors and isinstance(stored_sensors, list):
+                device["sensors"] = list(stored_sensors)
+                device["sensor_metadata"] = dict(stored.get("sensor_metadata", {}))
+            return device
+
+        stored = self._entry_device_metadata.get(device_id)
+        if stored:
+            return dict(stored)
 
         # 2) Median-Entities: device_id entspricht Location oder ID (Top-Level Only)
         for median in await self.get_median_entities():
@@ -384,4 +501,4 @@ class ConfigService(ConfigServiceProtocol):
             
         except Exception as e:
             _LOGGER.error("Fehler beim Debug der Übersetzungen im ConfigService: %s", e)
-            return {"error": str(e)} 
+            return {"error": str(e)}

@@ -16,14 +16,14 @@
       }
     },
     "error": {
-      "cannot_connect": "Verbindung zum MQTT-Broker fehlgeschlagen",
+      "cannot_connect": "Der Gerätekatalog konnte nicht geladen werden",
       "unknown": "Unerwarteter Fehler",
       "mindestens_eine_auswahl": "Bitte wähle mindestens ein Gerät oder einen Median",
       "validierungsfehler": "Fehler bei der Konfigurationsvalidierung"
     },
     "abort": {
       "already_configured": "Integration ist bereits konfiguriert",
-      "no_devices_available": "Keine Geräte in der Konfiguration verfügbar",
+      "no_devices_available": "Keine Geräte verfügbar",
       "single_instance_allowed": "Es ist nur eine Instanz der Integration erlaubt. Nutze 'Konfigurieren', um weitere Geräte hinzuzufügen."
     },
     "ui_text": {
@@ -51,49 +51,174 @@
   "entity": {
     "sensor": {
       "__device_meta": {
-        "name": "Ger\u00e4testatus",
+        "name": "Gerätestatus",
         "state_attributes": {
-          "device_id": { "name": "Ger\u00e4te-ID" },
-          "device_name": { "name": "Ger\u00e4tename" },
-          "device_type": { "name": "Ger\u00e4tetyp" },
-          "topic_pattern": { "name": "Topic" },
-          "sensors": { "name": "Sensoren" },
-          "sensors_count": { "name": "Sensoranzahl" },
-          "mqtt_connected": { "name": "MQTT verbunden" },
-          "inactivity_threshold_minutes": { "name": "Inaktivit\u00e4tsgrenze (Minuten)" },
-          "last_seen": { "name": "Zuletzt gesehen" }
+          "device_id": {
+            "name": "Geräte-ID"
+          },
+          "device_name": {
+            "name": "Gerätename"
+          },
+          "device_type": {
+            "name": "Gerätetyp"
+          },
+          "topic_pattern": {
+            "name": "Topic"
+          },
+          "sensors": {
+            "name": "Sensoren"
+          },
+          "sensors_count": {
+            "name": "Sensoranzahl"
+          },
+          "mqtt_connected": {
+            "name": "MQTT verbunden"
+          },
+          "inactivity_threshold_minutes": {
+            "name": "Inaktivitätsgrenze (Minuten)"
+          },
+          "last_seen": {
+            "name": "Zuletzt gesehen"
+          }
         }
       },
-      "Beleuchtungsstaerke": {"name": "Beleuchtungsst\u00e4rke"},
-      "Lautstaerke": {"name": "Lautst\u00e4rke"},
-      "Lautstaerke_Max": {"name": "Maximale Lautst\u00e4rke"},
-      "UV-Intensitaet": {"name": "UV-Intensit\u00e4t"},
-      "GehaeuseTemp": {"name": "Geh\u00e4usetemperatur"},
-      "PM10_Max": {"name": "PM10 Max"},
-      "PM25_Max": {"name": "PM2.5 Max"},
-      "PM10": {"name": "PM10"},
-      "PM2.5": {"name": "PM2.5"},
-      "PM25": {"name": "PM2.5"},
-      "Temperatur": {"name": "Temperatur"},
-      "LuftTemp": {"name": "Lufttemperatur"},
-      "WasserTemp": {"name": "Wassertemperatur"},
-      "TempC_SHT": {"name": "Temperatur"},
-      "TempC_DS": {"name": "Temperatur"},
-      "WasserTemp_1": {"name": "Wassertemperatur 1"},
-      "WasserTemp_2": {"name": "Wassertemperatur 2"},
-      "water_level": {"name": "Wasserstand"},
-      "water_temp": {"name": "Wassertemperatur"},
-      "TempC1": {"name": "Temperatur 1"},
-      "TempC2": {"name": "Temperatur 2"},
-      "Luftfeuchte": {"name": "Luftfeuchte"},
-      "Luftdruck": {"name": "Luftdruck"}
+      "Beleuchtungsstaerke": {
+        "name": "Beleuchtungsstärke"
+      },
+      "Lautstaerke": {
+        "name": "Lautstärke"
+      },
+      "Lautstaerke_Max": {
+        "name": "Maximale Lautstärke"
+      },
+      "UV-Intensitaet": {
+        "name": "UV-Intensität"
+      },
+      "GehaeuseTemp": {
+        "name": "Gehäusetemperatur"
+      },
+      "PM10_Max": {
+        "name": "PM10 Max"
+      },
+      "PM25_Max": {
+        "name": "PM2.5 Max"
+      },
+      "PM10": {
+        "name": "PM10"
+      },
+      "PM2.5": {
+        "name": "PM2.5"
+      },
+      "PM25": {
+        "name": "PM2.5"
+      },
+      "Temperatur": {
+        "name": "Temperatur"
+      },
+      "LuftTemp": {
+        "name": "Lufttemperatur"
+      },
+      "WasserTemp": {
+        "name": "Wassertemperatur"
+      },
+      "TempC_SHT": {
+        "name": "Temperatur"
+      },
+      "TempC_DS": {
+        "name": "Temperatur"
+      },
+      "WasserTemp_1": {
+        "name": "Wassertemperatur 1"
+      },
+      "WasserTemp_2": {
+        "name": "Wassertemperatur 2"
+      },
+      "water_level": {
+        "name": "Wasserstand"
+      },
+      "water_temp": {
+        "name": "Wassertemperatur"
+      },
+      "TempC1": {
+        "name": "Temperatur 1"
+      },
+      "TempC2": {
+        "name": "Temperatur 2"
+      },
+      "Luftfeuchte": {
+        "name": "Luftfeuchte"
+      },
+      "Luftdruck": {
+        "name": "Luftdruck"
+      },
+      "temperature_case": {
+        "name": "Gehäusetemperatur"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "humidity": {
+        "name": "Luftfeuchte"
+      },
+      "pressure": {
+        "name": "Luftdruck"
+      },
+      "illuminance": {
+        "name": "Beleuchtungsstärke"
+      },
+      "uv": {
+        "name": "UV-Intensität"
+      },
+      "noise": {
+        "name": "Lautstärke"
+      },
+      "noise_max": {
+        "name": "Maximale Lautstärke"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "pm10_max": {
+        "name": "PM10 Maximum"
+      },
+      "pm2_5": {
+        "name": "PM2.5"
+      },
+      "pm2_5_max": {
+        "name": "PM2.5 Maximum"
+      },
+      "water_temperature": {
+        "name": "Wassertemperatur"
+      },
+      "air_temperature": {
+        "name": "Lufttemperatur"
+      },
+      "soil_temperature": {
+        "name": "Bodentemperatur"
+      },
+      "leaf_temperature": {
+        "name": "Blatttemperatur"
+      },
+      "air_humidity": {
+        "name": "Luftfeuchte"
+      },
+      "soil_moisture": {
+        "name": "Bodenfeuchte"
+      },
+      "soil_conductivity": {
+        "name": "Bodenleitfähigkeit"
+      },
+      "leaf_moisture": {
+        "name": "Blattfeuchte"
+      }
     },
     "device_categories": {
       "senseBox": "senseBox:home",
       "Temperature": "Temperatursensor",
       "WaterLevel": "Wassersensor",
+      "Moisture": "Boden- und Blattsensor",
       "MedianEntities": "senseBox:home Median",
-      "Unknown": "Unbekanntes Ger\u00e4t"
+      "Unknown": "Unbekanntes Gerät"
     }
   },
   "state": {
@@ -103,4 +228,4 @@
     "offline": "Offline",
     "stale": "Veraltet"
   }
-} 
+}

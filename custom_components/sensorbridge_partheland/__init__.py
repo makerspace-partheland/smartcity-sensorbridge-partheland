@@ -142,6 +142,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Services aus hass.data holen
         config_service = hass.data[DOMAIN]["config_service"]
+        config_service.register_entry_data(dict(entry.data))
         mqtt_service = hass.data[DOMAIN]["mqtt_service"]
         parser_service = hass.data[DOMAIN]["parser_service"]
         entity_factory = hass.data[DOMAIN]["entity_factory"]

@@ -302,16 +302,10 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         try:
             _LOGGER.debug("Richte MQTT-Topics ein")
             
-            # MQTT-Konfiguration laden
-            mqtt_config = await self.config_service.get_mqtt_config()
-            topics_config = mqtt_config.get("topics", {})
-            
             # Topics für ausgewählte Geräte
             for device_id in self.selected_devices:
                 device_info = await self.config_service.get_device_by_id(device_id)
                 if device_info:
-                    device_type = device_info.get("type", "unknown")
-                    
                     # Topic-Pattern aus der Geräte-Konfiguration verwenden
                     topic_pattern = device_info.get("topic_pattern")
                     if topic_pattern:

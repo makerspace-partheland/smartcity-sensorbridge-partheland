@@ -7,7 +7,7 @@
         "description": "Connect to the SmartCity Partheland sensor network.\n\nThe integration will automatically discover available sensors."
       },
       "device_selection": {
-        "title": "Device Configuration", 
+        "title": "Device Configuration",
         "description": "Select your desired devices.\n\n**Individual devices**: Direct data from individual measurement stations\n**Median**: Failover safety through median values from multiple devices per location (choose Partheland for maximum safety)",
         "data": {
           "selected_devices": "Select individual devices",
@@ -16,14 +16,14 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to MQTT broker",
+      "cannot_connect": "The device catalog could not be loaded",
       "unknown": "Unexpected error",
       "mindestens_eine_auswahl": "Please select at least one device or median",
       "validierungsfehler": "Configuration validation error"
     },
     "abort": {
       "already_configured": "Integration is already configured",
-      "no_devices_available": "No devices available in configuration",
+      "no_devices_available": "No devices available",
       "single_instance_allowed": "Only one instance of the integration allowed. Use 'Configure' to add more devices."
     },
     "ui_text": {
@@ -46,7 +46,7 @@
         "title": "Adjust Device Configuration",
         "description": "Manage your device selection. Already configured devices are pre-selected.",
         "data": {
-          "selected_devices": "Select individual devices", 
+          "selected_devices": "Select individual devices",
           "selected_median_entities": "Select median entities"
         }
       }
@@ -127,12 +127,73 @@
       },
       "Luftdruck": {
         "name": "Air Pressure"
+      },
+      "temperature_case": {
+        "name": "Case Temperature"
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "pressure": {
+        "name": "Air Pressure"
+      },
+      "illuminance": {
+        "name": "Illuminance"
+      },
+      "uv": {
+        "name": "UV Intensity"
+      },
+      "noise": {
+        "name": "Sound Level"
+      },
+      "noise_max": {
+        "name": "Maximum Sound Level"
+      },
+      "pm10": {
+        "name": "PM10"
+      },
+      "pm10_max": {
+        "name": "PM10 Maximum"
+      },
+      "pm2_5": {
+        "name": "PM2.5"
+      },
+      "pm2_5_max": {
+        "name": "PM2.5 Maximum"
+      },
+      "water_temperature": {
+        "name": "Water Temperature"
+      },
+      "air_temperature": {
+        "name": "Air Temperature"
+      },
+      "soil_temperature": {
+        "name": "Soil Temperature"
+      },
+      "leaf_temperature": {
+        "name": "Leaf Temperature"
+      },
+      "air_humidity": {
+        "name": "Air Humidity"
+      },
+      "soil_moisture": {
+        "name": "Soil Moisture"
+      },
+      "soil_conductivity": {
+        "name": "Soil Conductivity"
+      },
+      "leaf_moisture": {
+        "name": "Leaf Moisture"
       }
     },
     "device_categories": {
       "senseBox": "senseBox:home",
       "Temperature": "Temperature Sensor",
       "WaterLevel": "Water Sensor",
+      "Moisture": "Soil and Leaf Sensor",
       "MedianEntities": "senseBox:home Median",
       "Unknown": "Unknown Device"
     }
@@ -144,4 +205,4 @@
     "error": "Error",
     "unavailable": "Unavailable"
   }
-} 
+}

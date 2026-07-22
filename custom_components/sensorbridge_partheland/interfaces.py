@@ -5,9 +5,7 @@ HA 2025 Compliant mit Protocol-Klassen für Dependency Injection
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Protocol
-from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
+from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol
 
 
 class ConfigServiceProtocol(Protocol):
@@ -19,6 +17,24 @@ class ConfigServiceProtocol(Protocol):
     
     async def get_devices(self) -> Dict[str, Any]:
         """Gibt alle verfügbaren Geräte zurück."""
+        ...
+
+    async def get_selection_candidates(
+        self, existing_ids: Iterable[str] = ()
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Gibt neue Auswahlkandidaten und bestehende Geräte zurück."""
+        ...
+
+    async def get_device_by_id(self, device_id: str) -> Optional[Dict[str, Any]]:
+        """Gibt Geräteinformationen aus API oder Config Entry zurück."""
+        ...
+
+    async def get_canonical_sensor_name(self, field_name: str) -> str:
+        """Ordnet ein MQTT-Rohfeld dem API-Feldnamen zu."""
+        ...
+
+    async def get_legacy_sensor_names(self, sensor_name: str) -> List[str]:
+        """Gibt frühere Feldnamen für einen API-Feldnamen zurück."""
         ...
     
     async def get_median_entities(self) -> List[Dict[str, Any]]:
@@ -156,4 +172,4 @@ EntityConfig = Dict[str, Any]
 MessagePayload = Any
 Topic = str
 DeviceID = str
-SensorName = str 
+SensorName = str

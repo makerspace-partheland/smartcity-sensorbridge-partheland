@@ -1,10 +1,8 @@
 import pytest
-from typing import Any, Dict
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from aiohttp import ClientSession
 from homeassistant.setup import async_setup_component
 
 from custom_components.sensorbridge_partheland.const import (
@@ -12,7 +10,9 @@ from custom_components.sensorbridge_partheland.const import (
     NAME,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
+    CONF_DEVICE_METADATA,
 )
+from custom_components.sensorbridge_partheland.api_client import DeviceCatalogError
 
 
 @pytest.fixture
@@ -41,6 +41,27 @@ def mock_config_service(mocker):
             {"id": "Naunhof_Nr2", "name": "Station Naunhof Nr 2", "sensors": ["temperature"]},
         ],
     }
+    service.get_selection_candidates.return_value = service.get_devices.return_value
+    metadata = {
+        "Naunhof_Nr1": {
+            "id": "Naunhof_Nr1",
+            "name": "Station Naunhof Nr 1",
+            "type": "senseBox",
+            "sensors": ["temperature", "humidity"],
+            "topic_pattern": "senseBox:home/Naunhof_Nr1",
+        },
+        "Naunhof_Nr2": {
+            "id": "Naunhof_Nr2",
+            "name": "Station Naunhof Nr 2",
+            "type": "senseBox",
+            "sensors": ["temperature"],
+            "topic_pattern": "senseBox:home/Naunhof_Nr2",
+        },
+    }
+    service.snapshot_devices.side_effect = lambda device_ids: {
+        device_id: metadata[device_id] for device_id in device_ids
+    }
+    service.register_entry_data = mocker.Mock()
     service.get_device_categories.return_value = {"sensebox": "SenseBox"}
     service.get_ui_text.return_value = {"sensors": "Sensoren"}
     service.get_median_entities.return_value = [
@@ -121,6 +142,11 @@ def mock_integration_setup(mocker, mock_config_service):
             "async_setup",
             new=mocker.AsyncMock(return_value=True),
         )
+        mocker.patch.object(
+            hass.config_entries,
+            "async_reload",
+            new=mocker.AsyncMock(return_value=True),
+        )
         
         # Mock die _async_initialize_config_service Methoden als AsyncMock
         async def mock_init_service(self):
@@ -190,6 +216,7 @@ async def test_user_flow_create_entry(hass: HomeAssistant, mock_config_service, 
     assert result2["title"] == NAME
     assert result2["data"][CONF_SELECTED_DEVICES] == ["Naunhof_Nr1"]
     assert result2["data"][CONF_SELECTED_MEDIAN_ENTITIES] == ["median_Naunhof"]
+    assert "Naunhof_Nr1" in result2["data"][CONF_DEVICE_METADATA]
 
 
 async def test_options_flow_sync_entry(hass: HomeAssistant, mock_config_service, mock_integration_setup):
@@ -223,6 +250,7 @@ async def test_options_flow_sync_entry(hass: HomeAssistant, mock_config_service,
     updated = hass.config_entries.async_get_entry(entry.entry_id)
     assert updated.data[CONF_SELECTED_DEVICES] == ["Naunhof_Nr1", "Naunhof_Nr2"]
     assert updated.data[CONF_SELECTED_MEDIAN_ENTITIES] == ["median_Naunhof"]
+    assert set(updated.data[CONF_DEVICE_METADATA]) == {"Naunhof_Nr1", "Naunhof_Nr2"}
 
 
 async def test_http_config_flow_happy_path(hass: HomeAssistant, hass_client, mock_integration_setup):
@@ -390,3 +418,119 @@ async def test_integration_services_interaction(hass: HomeAssistant, mock_config
     assert test_data is not None
     assert isinstance(test_data, dict)
 
+
+async def test_user_flow_reports_catalog_connection_error(
+    hass: HomeAssistant, mock_config_service, mock_integration_setup
+):
+    mock_integration_setup(hass)
+    mock_config_service.get_selection_candidates.side_effect = DeviceCatalogError(
+        "nicht erreichbar"
+    )
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_options_flow_keeps_filtered_existing_device(
+    hass: HomeAssistant, mock_config_service, mock_integration_setup
+):
+    mock_integration_setup(hass)
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    mock_config_service.get_selection_candidates.return_value = {
+        "senseBox": [
+            {
+                "id": "planned_existing",
+                "name": "Bestehende Station",
+                "sensors": ["temperature"],
+                "operationalstatus": "planned",
+            }
+        ]
+    }
+    mock_config_service.snapshot_devices.side_effect = lambda device_ids: {
+        device_id: {
+            "id": device_id,
+            "name": "Bestehende Station",
+            "type": "senseBox",
+            "sensors": ["temperature"],
+        }
+        for device_id in device_ids
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=NAME,
+        data={
+            CONF_SELECTED_DEVICES: ["planned_existing"],
+            CONF_SELECTED_MEDIAN_ENTITIES: [],
+        },
+        entry_id="planned-entry",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            CONF_SELECTED_DEVICES: ["planned_existing"],
+            CONF_SELECTED_MEDIAN_ENTITIES: [],
+        },
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert entry.data[CONF_SELECTED_DEVICES] == ["planned_existing"]
+    mock_config_service.get_selection_candidates.assert_awaited_with(
+        ["planned_existing"]
+    )
+
+
+async def test_migration_snapshots_api_metadata_and_legacy_sensors(
+    hass: HomeAssistant, mocker
+):
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=NAME,
+        data={
+            CONF_SELECTED_DEVICES: ["station"],
+            CONF_SELECTED_MEDIAN_ENTITIES: [],
+        },
+        version=1,
+        entry_id="migration-entry",
+    )
+    entry.add_to_hass(hass)
+    er.async_get(hass).async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "station_Temperatur",
+        config_entry=entry,
+    )
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.config_service.ConfigService.async_get_catalog",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "id": "station",
+                    "name": "Station",
+                    "type": "senseBox",
+                    "sensors": [],
+                    "sensor_metadata": {},
+                    "topic_pattern": "senseBox:home/station",
+                }
+            ]
+        ),
+    )
+
+    flow = config_entries.HANDLERS[DOMAIN]()
+    migrated = await flow.async_migrate_entry(hass, entry)
+
+    assert migrated is True
+    assert entry.version == 2
+    assert entry.data[CONF_DEVICE_METADATA]["station"]["sensors"] == [
+        "temperature"
+    ]

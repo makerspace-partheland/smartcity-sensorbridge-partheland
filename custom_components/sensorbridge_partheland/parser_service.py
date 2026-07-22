@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from homeassistant.core import HomeAssistant
 
@@ -165,16 +165,23 @@ class ParserService(ParserServiceProtocol):
             if not configured_sensors:
                 return None
             
-            # Sensordaten extrahieren - nur konfigurierte Sensoren
+            # Median-Felder bleiben unverändert. Gerätefelder werden auf die
+            # kanonischen Feldnamen des API-Katalogs abgebildet.
             sensor_data = {}
             for field_name, field_value in fields.items():
-                if isinstance(field_value, (int, float)) and field_name in configured_sensors:
-                    # Für Median-Topics KEIN Suffix anhängen. Die Entities
-                    # werden für die gleichen Feldnamen erzeugt wie bei
-                    # Einzelgeräten, nur unter der Median-Geräte-ID.
-                    # Einheitenkonvertierung anwenden falls konfiguriert
-                    converted_value = await self._apply_unit_conversion(field_name, field_value)
-                    sensor_data[field_name] = converted_value
+                if not isinstance(field_value, (int, float)):
+                    continue
+                sensor_name = (
+                    field_name
+                    if is_median
+                    else await self.config_service.get_canonical_sensor_name(field_name)
+                )
+                if sensor_name not in configured_sensors:
+                    continue
+                converted_value = await self._apply_unit_conversion(
+                    sensor_name, field_value
+                )
+                sensor_data[sensor_name] = converted_value
             
             if not sensor_data:
                 return None
@@ -200,9 +207,6 @@ class ParserService(ParserServiceProtocol):
         device_type: Erwartete Werte "sensebox" oder "specialized"; None für auto.
         """
         try:
-            # Konfiguration laden
-            config = await self.config_service.load_config()
-
             if is_median:
                 # Median-Entities über den ConfigService beziehen (HA 2025 konforme Struktur)
                 median_entities = await self.config_service.get_median_entities()
@@ -236,40 +240,10 @@ class ParserService(ParserServiceProtocol):
 
                 return None
 
-            # Nicht-Median: in known_devices nach der ID suchen
-            known_devices: Dict[str, list] = config.get("known_devices", {})
-
-            # Wenn Typ explizit ist, zunächst passend filtern
-            if device_type == "sensebox":
-                candidates = known_devices.get("senseBox", [])
-                for device in candidates:
-                    if device.get("id") == device_id:
-                        return device.get("sensors", [])
+            device = await self.config_service.get_device_by_id(device_id)
+            if not device:
                 return None
-
-            if device_type == "specialized":
-                # In allen Nicht-senseBox-Kategorien suchen (z. B. Temperature, WaterLevel)
-                for category_name, devices in known_devices.items():
-                    if category_name == "senseBox":
-                        continue
-                    for device in devices:
-                        if device.get("id") == device_id:
-                            return device.get("sensors", [])
-                return None
-
-            # Auto-Detect: erst senseBox, dann alle anderen Kategorien
-            for device in known_devices.get("senseBox", []):
-                if device.get("id") == device_id:
-                    return device.get("sensors", [])
-
-            for category_name, devices in known_devices.items():
-                if category_name == "senseBox":
-                    continue
-                for device in devices:
-                    if device.get("id") == device_id:
-                        return device.get("sensors", [])
-
-            return None
+            return device.get("sensors", [])
 
         except Exception as e:
             _LOGGER.error("Fehler beim Laden der konfigurierten Sensoren für Gerät %s: %s", device_id, e)
@@ -304,13 +278,20 @@ class ParserService(ParserServiceProtocol):
             if not configured_sensors:
                 return None
             
-            # Sensordaten extrahieren – strikt nach Konfiguration
+            # MQTT-Rohfelder auf API-Feldnamen normalisieren.
             sensor_data = {}
             for field_name, field_value in fields.items():
-                if isinstance(field_value, (int, float)) and field_name in configured_sensors:
-                    # Einheitenkonvertierung anwenden falls konfiguriert
-                    converted_value = await self._apply_unit_conversion(field_name, field_value)
-                    sensor_data[field_name] = converted_value
+                if not isinstance(field_value, (int, float)):
+                    continue
+                sensor_name = await self.config_service.get_canonical_sensor_name(
+                    field_name
+                )
+                if sensor_name not in configured_sensors:
+                    continue
+                converted_value = await self._apply_unit_conversion(
+                    sensor_name, field_value
+                )
+                sensor_data[sensor_name] = converted_value
             
             if not sensor_data:
                 return None
@@ -424,4 +405,4 @@ class ParserService(ParserServiceProtocol):
             
         except Exception as e:
             _LOGGER.error("Fehler bei der Einheitenkonvertierung für %s: %s", field_name, e)
-            return field_value 
+            return field_value

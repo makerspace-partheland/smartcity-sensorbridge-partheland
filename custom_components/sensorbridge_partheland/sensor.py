@@ -18,6 +18,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.typing import StateType
@@ -171,9 +172,13 @@ async def create_device_entities(
             sensors = sorted(sensors, key=lambda s: (s not in priority, priority.index(s) if s in priority else 999))
 
         for sensor_name in sensors:
+            unique_id = await _resolve_sensor_unique_id(
+                coordinator.hass, device_id, sensor_name, config_service
+            )
             entity_data = {
                 "device_id": device_id,
                 "sensor_type": sensor_name,
+                "unique_id": unique_id,
                 "device_name": device_info.get("name", device_id),
                 "external_urls": device_info.get("external_urls", {}),
                 "attributes": {
@@ -269,6 +274,27 @@ async def create_median_entities(
         return entities
 
 
+async def _resolve_sensor_unique_id(
+    hass: HomeAssistant,
+    device_id: str,
+    sensor_name: str,
+    config_service: ConfigServiceProtocol,
+) -> str:
+    """Behält eine bereits registrierte Unique-ID trotz Feldumbenennung bei."""
+    registry = er.async_get(hass)
+    canonical_unique_id = f"{device_id}_{sensor_name}"
+    candidates = [canonical_unique_id]
+    for legacy_name in await config_service.get_legacy_sensor_names(sensor_name):
+        legacy_unique_id = f"{device_id}_{legacy_name}"
+        if legacy_unique_id not in candidates:
+            candidates.append(legacy_unique_id)
+
+    for unique_id in candidates:
+        if registry.async_get_entity_id("sensor", DOMAIN, unique_id):
+            return unique_id
+    return canonical_unique_id
+
+
 class SensorBridgeSensor(SensorEntity):
     """SensorBridge Sensor Entity."""
 
@@ -287,7 +313,9 @@ class SensorBridgeSensor(SensorEntity):
         device_id = entity_data.get("device_id", "")
         sensor_name = entity_data.get("sensor_type", "")
 
-        self._attr_unique_id = f"{device_id}_{sensor_name}"
+        self._attr_unique_id = entity_data.get(
+            "unique_id", f"{device_id}_{sensor_name}"
+        )
 
         # HA 2025 Translation-API: translation_key setzen
         self._attr_translation_key = sensor_name
@@ -352,7 +380,6 @@ class SensorBridgeSensor(SensorEntity):
 
         # Debug-Translation-Test nicht automatisch ausführen
         self.hass = None  # Wird in async_added_to_hass gesetzt
-
     async def async_added_to_hass(self) -> None:
         """Wird aufgerufen wenn Entity zu Home Assistant hinzugefügt wird."""
         await super().async_added_to_hass()
