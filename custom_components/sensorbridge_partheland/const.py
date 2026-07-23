@@ -34,6 +34,7 @@ CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS: Final[str] = (
 CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: Final[str] = (
     "include_dwd_precipitation_belgershain"
 )
+CONF_INCLUDE_GEOBOX_BRANDIS: Final[str] = "include_geobox_brandis"
 CONF_SENSOR_STATIONS: Final[str] = "sensor_stations"
 CONF_SEARCH_TERM: Final[str] = "search_term"
 CONFIG_ENTRY_VERSION: Final[int] = 2
@@ -69,6 +70,12 @@ DWD_PRECIPITATION_STATIONS: Final[dict[str, dict[str, str]]] = {
         ),
     },
 }
+GEOBOX_BRANDIS_SOURCE: Final[str] = "geobox_brandis_01038"
+GEOBOX_BRANDIS_DEVICE_ID: Final[str] = "supplemental:geobox:01038"
+GEOBOX_BRANDIS_URL: Final[str] = (
+    "https://geoservice.rlp.de/server/rest/services/"
+    "REF_DE_Wetterstationen_komplett/FeatureServer/0/query"
+)
 
 # Default Values
 DEFAULT_SCAN_INTERVAL: Final[int] = 30  # Health check interval for MQTT

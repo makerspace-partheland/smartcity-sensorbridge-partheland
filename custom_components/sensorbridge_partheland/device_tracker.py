@@ -21,7 +21,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Richte einen statischen GPS-Standort je ausgewählter Messquelle ein."""
+    """Richte einen ortsfesten Standort je ausgewählter Messquelle ein."""
     config_service: ConfigServiceProtocol = hass.data[DOMAIN]["config_service"]
     trackers: list[SensorBridgeStationTracker] = []
 
@@ -51,7 +51,7 @@ def _has_valid_coordinates(device: dict[str, Any]) -> bool:
 
 
 class SensorBridgeStationTracker(TrackerEntity):
-    """Statischer GPS-Standort einer Messquelle."""
+    """Ortsfester Standort einer Messquelle."""
 
     _attr_available = True
     _attr_has_entity_name = True

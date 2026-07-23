@@ -21,12 +21,15 @@ from .const import (
     CONF_INCLUDE_DWD_POLLEN,
     CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
     CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
+    CONF_INCLUDE_GEOBOX_BRANDIS,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
     DOMAIN,
     DWD_POLLEN_DEVICE_ID,
     DWD_POLLEN_SOURCE,
     DWD_PRECIPITATION_STATIONS,
+    GEOBOX_BRANDIS_DEVICE_ID,
+    GEOBOX_BRANDIS_SOURCE,
     PLATFORMS,
     SUPPLEMENTAL_COORDINATORS,
 )
@@ -270,6 +273,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             supplemental_coordinators[station["source"]] = (
                 precipitation_coordinator
             )
+        if entry.data.get(CONF_INCLUDE_GEOBOX_BRANDIS, False):
+            from .geobox import GeoBoxBrandisCoordinator
+
+            geobox_coordinator = GeoBoxBrandisCoordinator(hass, entry)
+            await geobox_coordinator.async_refresh()
+            supplemental_coordinators[GEOBOX_BRANDIS_SOURCE] = geobox_coordinator
         supplemental_by_entry[entry.entry_id] = supplemental_coordinators
 
         # Plattformen laden (idempotent): Vor erneutem Setup sicherstellen, dass nicht doppelt geladen wird
@@ -420,6 +429,14 @@ async def async_remove_config_entry_device(
                 supplemental_removed = True
                 removed_source = station["source"]
                 break
+        if (
+            external_id == GEOBOX_BRANDIS_DEVICE_ID
+            and data.get(CONF_INCLUDE_GEOBOX_BRANDIS, False)
+        ):
+            data[CONF_INCLUDE_GEOBOX_BRANDIS] = False
+            changed = True
+            supplemental_removed = True
+            removed_source = GEOBOX_BRANDIS_SOURCE
 
         if changed:
             # 1) Config-Entry aktualisieren (damit Auswahl konsistent ist)
@@ -491,6 +508,8 @@ async def _async_cleanup_unselected_entities_and_devices(
     for station in DWD_PRECIPITATION_STATIONS.values():
         if entry.data.get(station["config_key"], False):
             selected_supplemental.add(station["device_id"])
+    if entry.data.get(CONF_INCLUDE_GEOBOX_BRANDIS, False):
+        selected_supplemental.add(GEOBOX_BRANDIS_DEVICE_ID)
 
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)

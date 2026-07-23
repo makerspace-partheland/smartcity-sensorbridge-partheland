@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
     DWD_POLLEN_SOURCE,
     DWD_PRECIPITATION_STATIONS,
+    GEOBOX_BRANDIS_SOURCE,
     MANUFACTURER,
     SUPPLEMENTAL_COORDINATORS,
 )
@@ -95,6 +96,11 @@ async def async_setup_entry(
             entities.extend(
                 create_precipitation_entities(precipitation_coordinator)
             )
+        geobox_coordinator = supplemental_coordinators.get(GEOBOX_BRANDIS_SOURCE)
+        if geobox_coordinator is not None:
+            from .geobox import create_geobox_entities
+
+            entities.extend(create_geobox_entities(geobox_coordinator))
 
         _LOGGER.info("Created %d sensor entities", len(entities))
         async_add_entities(entities)

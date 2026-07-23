@@ -43,7 +43,8 @@
         "data": {
           "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)",
           "include_dwd_precipitation_brandis": "Precipitation (DWD, Brandis)",
-          "include_dwd_precipitation_belgershain": "Precipitation (DWD, Belgershain)"
+          "include_dwd_precipitation_belgershain": "Precipitation (DWD, Belgershain)",
+          "include_geobox_brandis": "Agricultural weather (GeoBox, Brandis)"
         }
       }
     },
@@ -117,7 +118,8 @@
         "data": {
           "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)",
           "include_dwd_precipitation_brandis": "Precipitation (DWD, Brandis)",
-          "include_dwd_precipitation_belgershain": "Precipitation (DWD, Belgershain)"
+          "include_dwd_precipitation_belgershain": "Precipitation (DWD, Belgershain)",
+          "include_geobox_brandis": "Agricultural weather (GeoBox, Brandis)"
         }
       }
     },
@@ -476,6 +478,27 @@
             "name": "Last measurement"
           }
         }
+      },
+      "geobox_air_temperature": {
+        "name": "Air temperature"
+      },
+      "geobox_relative_humidity": {
+        "name": "Relative humidity"
+      },
+      "geobox_precipitation_last_hour": {
+        "name": "Precipitation last hour"
+      },
+      "geobox_precipitation_today": {
+        "name": "Precipitation today"
+      },
+      "geobox_solar_radiation_last_hour": {
+        "name": "Global radiation last hour"
+      },
+      "geobox_wind_speed": {
+        "name": "Wind speed"
+      },
+      "geobox_measurement_time": {
+        "name": "Last measurement"
       }
     },
     "device_categories": {

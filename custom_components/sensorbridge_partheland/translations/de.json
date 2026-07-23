@@ -43,7 +43,8 @@
         "data": {
           "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)",
           "include_dwd_precipitation_brandis": "Niederschlag (DWD, Brandis)",
-          "include_dwd_precipitation_belgershain": "Niederschlag (DWD, Belgershain)"
+          "include_dwd_precipitation_belgershain": "Niederschlag (DWD, Belgershain)",
+          "include_geobox_brandis": "Agrarwetter (GeoBox, Brandis)"
         }
       }
     },
@@ -108,7 +109,8 @@
         "data": {
           "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)",
           "include_dwd_precipitation_brandis": "Niederschlag (DWD, Brandis)",
-          "include_dwd_precipitation_belgershain": "Niederschlag (DWD, Belgershain)"
+          "include_dwd_precipitation_belgershain": "Niederschlag (DWD, Belgershain)",
+          "include_geobox_brandis": "Agrarwetter (GeoBox, Brandis)"
         }
       }
     },
@@ -499,6 +501,27 @@
             "name": "Letzte Messung"
           }
         }
+      },
+      "geobox_air_temperature": {
+        "name": "Lufttemperatur"
+      },
+      "geobox_relative_humidity": {
+        "name": "Relative Luftfeuchte"
+      },
+      "geobox_precipitation_last_hour": {
+        "name": "Niederschlag letzte Stunde"
+      },
+      "geobox_precipitation_today": {
+        "name": "Niederschlag heute"
+      },
+      "geobox_solar_radiation_last_hour": {
+        "name": "Globalstrahlung letzte Stunde"
+      },
+      "geobox_wind_speed": {
+        "name": "Windgeschwindigkeit"
+      },
+      "geobox_measurement_time": {
+        "name": "Letzte Messung"
       }
     },
     "device_categories": {

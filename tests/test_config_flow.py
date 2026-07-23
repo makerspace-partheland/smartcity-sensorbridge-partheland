@@ -10,6 +10,7 @@ from custom_components.sensorbridge_partheland.const import (
     CONF_INCLUDE_DWD_POLLEN,
     CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
     CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
+    CONF_INCLUDE_GEOBOX_BRANDIS,
     CONF_SEARCH_TERM,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
@@ -346,6 +347,7 @@ async def test_user_flow_create_entry(
     assert result4["data"][CONF_INCLUDE_DWD_POLLEN] is False
     assert result4["data"][CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS] is False
     assert result4["data"][CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN] is False
+    assert result4["data"][CONF_INCLUDE_GEOBOX_BRANDIS] is False
 
 
 async def test_user_flow_adds_dwd_pollen_source(
@@ -446,6 +448,7 @@ async def test_user_flow_adds_dwd_precipitation_sources(
         CONF_INCLUDE_DWD_POLLEN: False,
         CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS: False,
         CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: False,
+        CONF_INCLUDE_GEOBOX_BRANDIS: False,
     }
 
     await hass.config_entries.flow.async_configure(
@@ -454,6 +457,7 @@ async def test_user_flow_adds_dwd_precipitation_sources(
             CONF_INCLUDE_DWD_POLLEN: False,
             CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS: True,
             CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: True,
+            CONF_INCLUDE_GEOBOX_BRANDIS: True,
         },
     )
     result = await hass.config_entries.flow.async_configure(
@@ -462,6 +466,7 @@ async def test_user_flow_adds_dwd_precipitation_sources(
 
     assert result["data"][CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS] is True
     assert result["data"][CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN] is True
+    assert result["data"][CONF_INCLUDE_GEOBOX_BRANDIS] is True
 
 
 async def test_user_flow_accumulates_multiple_searches(

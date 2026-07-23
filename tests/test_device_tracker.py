@@ -103,7 +103,7 @@ async def test_setup_does_not_create_trackers_for_medians(hass):
     config_service.get_device_by_id.assert_not_awaited()
 
 
-def test_tracker_exposes_static_gps_and_api_metadata():
+def test_tracker_exposes_static_location_and_api_metadata():
     tracker = SensorBridgeStationTracker(_device())
 
     assert tracker.unique_id == "station_location"

@@ -25,6 +25,7 @@ from .const import (
     CONF_INCLUDE_DWD_POLLEN,
     CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
     CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
+    CONF_INCLUDE_GEOBOX_BRANDIS,
     CONF_SEARCH_TERM,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
@@ -60,6 +61,7 @@ class _AccumulatingSelectionFlow:
         include_dwd_pollen: bool = False,
         include_dwd_precipitation_brandis: bool = False,
         include_dwd_precipitation_belgershain: bool = False,
+        include_geobox_brandis: bool = False,
     ) -> None:
         self.devices: dict[str, dict[str, Any]] = {}
         self.median_entities: dict[str, dict[str, Any]] = {}
@@ -70,6 +72,7 @@ class _AccumulatingSelectionFlow:
         self.include_dwd_precipitation_belgershain = (
             include_dwd_precipitation_belgershain
         )
+        self.include_geobox_brandis = include_geobox_brandis
         self.extras_changed = False
         self.visible_devices: set[str] = set()
         self.visible_medians: set[str] = set()
@@ -213,6 +216,9 @@ class _AccumulatingSelectionFlow:
             self.include_dwd_precipitation_belgershain = bool(
                 user_input.get(CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN, False)
             )
+            self.include_geobox_brandis = bool(
+                user_input.get(CONF_INCLUDE_GEOBOX_BRANDIS, False)
+            )
             self.extras_changed = True
             return self._show_selection_menu()
 
@@ -231,6 +237,10 @@ class _AccumulatingSelectionFlow:
                     vol.Required(
                         CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
                         default=self.include_dwd_precipitation_belgershain,
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_INCLUDE_GEOBOX_BRANDIS,
+                        default=self.include_geobox_brandis,
                     ): BooleanSelector(),
                 }
             ),
@@ -393,6 +403,7 @@ class ConfigFlow(
                 CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: (
                     self.include_dwd_precipitation_belgershain
                 ),
+                CONF_INCLUDE_GEOBOX_BRANDIS: self.include_geobox_brandis,
             },
         )
 
@@ -440,6 +451,7 @@ class OptionsFlowHandler(
                     CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN, False
                 )
             ),
+            bool(self.config_entry.data.get(CONF_INCLUDE_GEOBOX_BRANDIS, False)),
         )
         await self._async_initialize_config_service()
         assert self.config_service is not None
@@ -500,6 +512,8 @@ class OptionsFlowHandler(
             new_data[CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN] = (
                 self.include_dwd_precipitation_belgershain
             )
+        if self.extras_changed or CONF_INCLUDE_GEOBOX_BRANDIS in self.config_entry.data:
+            new_data[CONF_INCLUDE_GEOBOX_BRANDIS] = self.include_geobox_brandis
         self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
         await self.hass.config_entries.async_reload(self.config_entry.entry_id)
         return self.async_create_entry(title="", data={})
