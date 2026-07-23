@@ -14,7 +14,10 @@ MANUFACTURER: Final[str] = "Makerspace Partheland e.V."
 VERSION: Final[str] = "0.1.0"
 
 # Platforms
-PLATFORMS: Final[list[Platform]] = [Platform.SENSOR]
+PLATFORMS: Final[list[Platform]] = [
+    Platform.DEVICE_TRACKER,
+    Platform.SENSOR,
+]
 
 # MQTT Configuration (Default-Werte, werden aus config.json überschrieben)
 MQTT_VERSION: Final[int] = 4  # MQTT v3.1.1

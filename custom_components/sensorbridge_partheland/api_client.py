@@ -9,7 +9,6 @@ from aiohttp import ClientError, ClientSession, ClientTimeout
 
 from .const import DEFAULT_TIMEOUT, DEVICE_API_URL
 
-
 DEVICE_TYPE_MAP = {
     "SenseBoxDevice": "senseBox",
     "TemperatureDevice": "Temperature",
@@ -116,6 +115,8 @@ class DeviceCatalogClient:
                 "api_id": feature.get("id"),
                 "status": properties.get("status"),
                 "last_seen": properties.get("last_seen"),
+                "active": attributes.get("active"),
+                "location_type": attributes.get("locationtype"),
                 "operationalstatus": attributes.get("operationalstatus"),
                 "external_urls": external_urls,
                 "sensors": sorted(sensor_metadata),
@@ -133,7 +134,9 @@ class DeviceCatalogClient:
                 if (
                     isinstance(coordinates, list)
                     and len(coordinates) >= 2
-                    and all(isinstance(value, (int, float)) for value in coordinates[:2])
+                    and all(
+                        isinstance(value, (int, float)) for value in coordinates[:2]
+                    )
                 ):
                     device["longitude"] = coordinates[0]
                     device["latitude"] = coordinates[1]

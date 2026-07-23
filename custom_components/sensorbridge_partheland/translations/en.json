@@ -108,6 +108,46 @@
     }
   },
   "entity": {
+    "device_tracker": {
+      "location": {
+        "name": "Location",
+        "state_attributes": {
+          "measurement_source_id": {
+            "name": "Measurement source ID"
+          },
+          "api_id": {
+            "name": "API ID"
+          },
+          "api_type": {
+            "name": "API type"
+          },
+          "device_type": {
+            "name": "Measurement source type"
+          },
+          "status": {
+            "name": "Data status"
+          },
+          "last_seen": {
+            "name": "Last seen"
+          },
+          "operational_status": {
+            "name": "Operational status"
+          },
+          "active": {
+            "name": "Active"
+          },
+          "location_type": {
+            "name": "Location type"
+          },
+          "makerspace_url": {
+            "name": "Makerspace dashboard"
+          },
+          "open_sense_map_url": {
+            "name": "openSenseMap"
+          }
+        }
+      }
+    },
     "sensor": {
       "Beleuchtungsstaerke": {
         "name": "Illuminance"

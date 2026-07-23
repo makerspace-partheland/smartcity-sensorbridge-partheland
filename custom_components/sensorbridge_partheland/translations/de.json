@@ -99,6 +99,46 @@
     }
   },
   "entity": {
+    "device_tracker": {
+      "location": {
+        "name": "Standort",
+        "state_attributes": {
+          "measurement_source_id": {
+            "name": "Messquellen-ID"
+          },
+          "api_id": {
+            "name": "API-ID"
+          },
+          "api_type": {
+            "name": "API-Typ"
+          },
+          "device_type": {
+            "name": "Messquellentyp"
+          },
+          "status": {
+            "name": "Datenstatus"
+          },
+          "last_seen": {
+            "name": "Zuletzt gesehen"
+          },
+          "operational_status": {
+            "name": "Betriebsstatus"
+          },
+          "active": {
+            "name": "Aktiv"
+          },
+          "location_type": {
+            "name": "Standorttyp"
+          },
+          "makerspace_url": {
+            "name": "Makerspace-Dashboard"
+          },
+          "open_sense_map_url": {
+            "name": "openSenseMap"
+          }
+        }
+      }
+    },
     "sensor": {
       "__device_meta": {
         "name": "Gerätestatus",

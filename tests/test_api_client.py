@@ -57,6 +57,8 @@ async def test_catalog_normalizes_device_and_sensor_metadata():
                     "attributes": {
                         "measurement": "Naunhof_Nr1",
                         "displayname": "Naunhof Nr 1",
+                        "active": "true",
+                        "locationtype": "field",
                         "operationalstatus": "defective",
                         "osm": "https://opensensemap.org/example",
                         "mspl": "https://sensoren.makerspace-partheland.de/example",
@@ -85,6 +87,8 @@ async def test_catalog_normalizes_device_and_sensor_metadata():
             "api_id": "mspl-example",
             "status": "online",
             "last_seen": "2026-07-22T14:49:53.993Z",
+            "active": "true",
+            "location_type": "field",
             "operationalstatus": "defective",
             "external_urls": {
                 "openSenseMap": "https://opensensemap.org/example",
