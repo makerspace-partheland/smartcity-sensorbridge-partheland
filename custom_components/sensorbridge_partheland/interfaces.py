@@ -77,8 +77,14 @@ class MQTTServiceProtocol(Protocol):
         """Trennt die MQTT-Verbindung."""
         ...
     
-    async def subscribe(self, topic: str, callback: Callable[[str, Any], None]) -> None:
+    async def subscribe(
+        self, topic: str, callback: Callable[[str, Any], None]
+    ) -> None:
         """Abonniert ein MQTT-Topic."""
+        ...
+
+    async def restore_subscriptions(self) -> bool:
+        """Stellt alle gewünschten MQTT-Abonnements wieder her."""
         ...
     
     async def unsubscribe(self, topic: str) -> None:
@@ -88,6 +94,11 @@ class MQTTServiceProtocol(Protocol):
     @property
     def is_connected(self) -> bool:
         """Gibt den Verbindungsstatus zurück."""
+        ...
+
+    @property
+    def subscriptions_ready(self) -> bool:
+        """Gibt zurück, ob alle gewünschten Topics abonniert sind."""
         ...
 
 
@@ -131,8 +142,8 @@ class EntityFactoryProtocol(Protocol):
 class CoordinatorProtocol(Protocol):
     """Protocol für Coordinator Interface."""
     
-    async def async_config_entry_first_refresh(self) -> None:
-        """Erste Aktualisierung nach Config Entry."""
+    async def async_start(self) -> None:
+        """Startet den Coordinator ohne den Config Entry zu blockieren."""
         ...
     
     async def async_shutdown(self) -> None:

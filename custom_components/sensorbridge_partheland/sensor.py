@@ -48,56 +48,78 @@ async def async_setup_entry(
     coordinator = entry.runtime_data.coordinator
     config_service = entry.runtime_data.config_service
 
-    # Entities erstellen
     entities = []
 
-    try:
-        # Einzelne Geräte
-        selected_devices = entry.data.get("selected_devices", [])
-        for device_id in selected_devices:
+    selected_devices = entry.data.get("selected_devices", [])
+    for device_id in selected_devices:
+        try:
             device_entities = await create_device_entities(
                 coordinator, device_id, config_service
             )
             entities.extend(device_entities)
+        except Exception as err:
+            _LOGGER.error(
+                "Error setting up sensor entities for device %s: %s",
+                device_id,
+                err,
+            )
 
-        # Median-Entities
-        selected_median_entities = entry.data.get(
-            "selected_median_entities", []
-        )
-        for median_id in selected_median_entities:
+    selected_median_entities = entry.data.get(
+        "selected_median_entities", []
+    )
+    for median_id in selected_median_entities:
+        try:
             median_entities = await create_median_entities(
                 coordinator, median_id, config_service
             )
             entities.extend(median_entities)
+        except Exception as err:
+            _LOGGER.error(
+                "Error setting up median entities for %s: %s",
+                median_id,
+                err,
+            )
 
-        supplemental_coordinators = entry.runtime_data.supplemental_coordinators
-        pollen_coordinator = supplemental_coordinators.get(DWD_POLLEN_SOURCE)
-        if pollen_coordinator is not None:
+    supplemental_coordinators = entry.runtime_data.supplemental_coordinators
+    pollen_coordinator = supplemental_coordinators.get(DWD_POLLEN_SOURCE)
+    if pollen_coordinator is not None:
+        try:
             from .pollen import create_pollen_entities
 
             entities.extend(create_pollen_entities(pollen_coordinator))
-        for station in DWD_PRECIPITATION_STATIONS.values():
-            precipitation_coordinator = supplemental_coordinators.get(
-                station["source"]
-            )
-            if precipitation_coordinator is None:
-                continue
+        except Exception as err:
+            _LOGGER.error("Error setting up pollen entities: %s", err)
+
+    for station in DWD_PRECIPITATION_STATIONS.values():
+        precipitation_coordinator = supplemental_coordinators.get(
+            station["source"]
+        )
+        if precipitation_coordinator is None:
+            continue
+        try:
             from .precipitation import create_precipitation_entities
 
             entities.extend(
                 create_precipitation_entities(precipitation_coordinator)
             )
-        geobox_coordinator = supplemental_coordinators.get(GEOBOX_BRANDIS_SOURCE)
-        if geobox_coordinator is not None:
+        except Exception as err:
+            _LOGGER.error(
+                "Error setting up precipitation entities for %s: %s",
+                station["source"],
+                err,
+            )
+
+    geobox_coordinator = supplemental_coordinators.get(GEOBOX_BRANDIS_SOURCE)
+    if geobox_coordinator is not None:
+        try:
             from .geobox import create_geobox_entities
 
             entities.extend(create_geobox_entities(geobox_coordinator))
+        except Exception as err:
+            _LOGGER.error("Error setting up GeoBox entities: %s", err)
 
-        _LOGGER.info("Created %d sensor entities", len(entities))
-        async_add_entities(entities)
-
-    except Exception as e:
-        _LOGGER.error("Error setting up sensor entities: %s", e)
+    _LOGGER.info("Created %d sensor entities", len(entities))
+    async_add_entities(entities)
 
 
 async def create_device_entities(

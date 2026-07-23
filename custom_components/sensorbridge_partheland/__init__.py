@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -173,19 +173,119 @@ async def _async_create_runtime(
     )
 
 
+async def _async_start_supplemental_source(
+    hass: HomeAssistant,
+    runtime: SensorBridgeRuntimeData,
+    source: str,
+    factory: Callable[[], Any],
+) -> None:
+    """Startet eine Zusatzquelle unabhängig von den übrigen Datenpfaden."""
+    coordinator = None
+    try:
+        coordinator = factory()
+        runtime.supplemental_coordinators[source] = coordinator
+        await coordinator.async_refresh()
+    except Exception as err:
+        _LOGGER.warning(
+            "Zusatzquelle %s konnte nicht gestartet werden: %s",
+            source,
+            err,
+        )
+        if coordinator is None:
+            return
+        try:
+            await coordinator.async_shutdown()
+        except Exception as shutdown_err:
+            runtime.pending_supplemental_shutdowns[source] = coordinator
+            _async_schedule_pending_supplemental_cleanup(hass, runtime)
+            _LOGGER.warning(
+                "Zusatzquelle %s konnte nach dem Startfehler nicht beendet "
+                "werden: %s",
+                source,
+                shutdown_err,
+            )
+        runtime.supplemental_coordinators.pop(source, None)
+
+
+async def _async_retry_pending_supplemental_cleanup(
+    runtime: SensorBridgeRuntimeData,
+) -> None:
+    """Beendet fehlgeschlagene Zusatzquellen unabhängig vom Config Entry."""
+    retry_delay = 1
+    try:
+        while runtime.pending_supplemental_shutdowns:
+            for source, coordinator in list(
+                runtime.pending_supplemental_shutdowns.items()
+            ):
+                try:
+                    await coordinator.async_shutdown()
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Zusatzquelle %s konnte noch nicht beendet werden: %s",
+                        source,
+                        err,
+                    )
+                else:
+                    runtime.pending_supplemental_shutdowns.pop(source, None)
+            if runtime.pending_supplemental_shutdowns:
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 60)
+    finally:
+        if runtime.pending_supplemental_cleanup_task is asyncio.current_task():
+            runtime.pending_supplemental_cleanup_task = None
+
+
+def _async_schedule_pending_supplemental_cleanup(
+    hass: HomeAssistant,
+    runtime: SensorBridgeRuntimeData,
+) -> None:
+    """Plant den unabhängigen Cleanup fehlgeschlagener Zusatzquellen."""
+    task = runtime.pending_supplemental_cleanup_task
+    if task is not None and not task.done():
+        return
+    runtime.pending_supplemental_cleanup_task = (
+        hass.async_create_background_task(
+            _async_retry_pending_supplemental_cleanup(runtime),
+            f"{DOMAIN} pending supplemental cleanup",
+            eager_start=False,
+        )
+    )
+
+
 async def _async_shutdown_runtime(runtime: SensorBridgeRuntimeData) -> bool:
     """Beende alle Laufzeitobjekte unabhängig voneinander."""
     shutdown_ok = True
-    for source, coordinator in list(runtime.supplemental_coordinators.items()):
+    cleanup_task = runtime.pending_supplemental_cleanup_task
+    if (
+        cleanup_task is not None
+        and cleanup_task is not asyncio.current_task()
+        and not cleanup_task.done()
+    ):
+        cleanup_task.cancel()
         try:
-            await coordinator.async_shutdown()
-        except Exception as err:
-            shutdown_ok = False
-            _LOGGER.warning(
-                "Zusatzquelle %s konnte nicht beendet werden: %s", source, err
-            )
-        else:
-            runtime.supplemental_coordinators.pop(source, None)
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+    if runtime.pending_supplemental_cleanup_task is cleanup_task:
+        runtime.pending_supplemental_cleanup_task = None
+
+    supplemental_groups = (
+        runtime.supplemental_coordinators,
+        runtime.pending_supplemental_shutdowns,
+    )
+    for coordinators in supplemental_groups:
+        for source, coordinator in list(coordinators.items()):
+            try:
+                await coordinator.async_shutdown()
+            except Exception as err:
+                shutdown_ok = False
+                _LOGGER.warning(
+                    "Zusatzquelle %s konnte nicht beendet werden: %s",
+                    source,
+                    err,
+                )
+            else:
+                coordinators.pop(source, None)
 
     if not runtime.coordinator_shutdown:
         try:
@@ -436,37 +536,59 @@ async def async_setup_entry(
             selected_median_entities,
         )
 
-        # Coordinator starten
-        await runtime.coordinator.async_config_entry_first_refresh()
-
+        supplemental_tasks: list[asyncio.Task] = []
         if entry.data.get(CONF_INCLUDE_DWD_POLLEN, False):
             from .pollen import DwdPollenCoordinator
 
-            pollen_coordinator = DwdPollenCoordinator(hass, entry)
-            runtime.supplemental_coordinators[DWD_POLLEN_SOURCE] = (
-                pollen_coordinator
+            supplemental_tasks.append(
+                hass.async_create_task(
+                    _async_start_supplemental_source(
+                        hass,
+                        runtime,
+                        DWD_POLLEN_SOURCE,
+                        lambda: DwdPollenCoordinator(hass, entry),
+                    )
+                )
             )
-            await pollen_coordinator.async_refresh()
         for station_id, station in DWD_PRECIPITATION_STATIONS.items():
             if not entry.data.get(station["config_key"], False):
                 continue
             from .precipitation import DwdPrecipitationCoordinator
 
-            precipitation_coordinator = DwdPrecipitationCoordinator(
-                hass, entry, station_id
+            supplemental_tasks.append(
+                hass.async_create_task(
+                    _async_start_supplemental_source(
+                        hass,
+                        runtime,
+                        station["source"],
+                        lambda station_id=station_id: DwdPrecipitationCoordinator(
+                            hass, entry, station_id
+                        ),
+                    )
+                )
             )
-            runtime.supplemental_coordinators[station["source"]] = (
-                precipitation_coordinator
-            )
-            await precipitation_coordinator.async_refresh()
         if entry.data.get(CONF_INCLUDE_GEOBOX_BRANDIS, False):
             from .geobox import GeoBoxBrandisCoordinator
 
-            geobox_coordinator = GeoBoxBrandisCoordinator(hass, entry)
-            runtime.supplemental_coordinators[GEOBOX_BRANDIS_SOURCE] = (
-                geobox_coordinator
+            supplemental_tasks.append(
+                hass.async_create_task(
+                    _async_start_supplemental_source(
+                        hass,
+                        runtime,
+                        GEOBOX_BRANDIS_SOURCE,
+                        lambda: GeoBoxBrandisCoordinator(hass, entry),
+                    )
+                )
             )
-            await geobox_coordinator.async_refresh()
+
+        try:
+            await runtime.coordinator.async_start()
+        except BaseException:
+            for task in supplemental_tasks:
+                task.cancel()
+            await asyncio.gather(*supplemental_tasks, return_exceptions=True)
+            raise
+        await asyncio.gather(*supplemental_tasks)
 
         platforms_started = True
         runtime.pending_platforms = {str(platform) for platform in PLATFORMS}
@@ -492,7 +614,7 @@ async def async_setup_entry(
 
         return True
 
-    except Exception as err:
+    except BaseException as err:
         rollback_ok = True
         if platforms_started:
             if runtime is not None:

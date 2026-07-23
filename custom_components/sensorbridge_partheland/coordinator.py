@@ -85,19 +85,16 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         
         _LOGGER.debug("Coordinator initialisiert für %d Geräte", len(self.selected_devices))
     
-    async def async_config_entry_first_refresh(self) -> None:
-        """Erste Aktualisierung nach Config Entry."""
+    async def async_start(self) -> None:
+        """Startet den Coordinator, auch wenn MQTT zunächst nicht erreichbar ist."""
         try:
-            _LOGGER.debug("Starte erste Coordinator-Aktualisierung")
+            _LOGGER.debug("Starte Coordinator")
             
             # MQTT-Topics bestimmen
             await self._setup_mqtt_topics()
-            
-            # MQTT-Verbindung herstellen
-            if not await self.mqtt_service.connect():
-                raise UpdateFailed("MQTT-Verbindung fehlgeschlagen")
-            
-            # MQTT-Topics abonnieren
+
+            # Gewünschte Topics vor dem Verbindungsversuch registrieren, damit
+            # ein späterer Connect sie ohne Config-Entry-Reload abonnieren kann.
             await self._subscribe_to_topics()
             
             # Stale-Threshold anhand Keepalive konfigurieren (mind. 300s)
@@ -126,30 +123,30 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
                 self._per_device_stale = {}
 
             # Auf MQTT Connect/Disconnect Events reagieren, um UI-Update zu triggern
-            self._mqtt_unsubs.append(
-                self.hass.bus.async_listen(
-                    EVENT_MQTT_CONNECTED, self._on_mqtt_connected_event
+            if not self._mqtt_unsubs:
+                self._mqtt_unsubs.append(
+                    self.hass.bus.async_listen(
+                        EVENT_MQTT_CONNECTED, self._on_mqtt_connected_event
+                    )
                 )
-            )
-            self._mqtt_unsubs.append(
-                self.hass.bus.async_listen(
-                    EVENT_MQTT_DISCONNECTED, self._on_mqtt_disconnected_event
+                self._mqtt_unsubs.append(
+                    self.hass.bus.async_listen(
+                        EVENT_MQTT_DISCONNECTED,
+                        self._on_mqtt_disconnected_event,
+                    )
                 )
-            )
 
-            # Erste Daten-Aktualisierung
-            await self.async_request_refresh()
+            try:
+                data = await self._async_update_data()
+            except UpdateFailed as err:
+                self.async_set_update_error(err)
+            else:
+                self.async_set_updated_data(data)
             
-            _LOGGER.info("Coordinator erfolgreich gestartet")
-            
-        except UpdateFailed as err:
-            await self.error_handler.handle_error(
-                err, "Coordinator First Refresh"
-            )
-            raise
+            _LOGGER.info("Coordinator gestartet")
         except Exception as err:
             await self.error_handler.handle_error(
-                err, "Coordinator First Refresh"
+                err, "Coordinator Start"
             )
             raise
     
@@ -252,22 +249,24 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
     
     async def _async_update_data(self) -> Dict[str, Any]:
         """Health Check und Fallback-Mechanismus (MQTT-Daten kommen Push-basiert)."""
-        try:
-            _LOGGER.debug("Führe Health Check durch")
-            
-            # Prüfe MQTT-Verbindungsstatus
-            if not self.mqtt_service.is_connected:
-                _LOGGER.warning("MQTT-Verbindung verloren, versuche Reconnect")
-                success = await self.mqtt_service.connect()
-                if not success:
-                    raise UpdateFailed("MQTT nicht verbunden")
-            
-            # Aktuelle Sensordaten zurückgeben (werden über MQTT-Callbacks aktualisiert)
+        _LOGGER.debug("Führe Health Check durch")
+
+        if not self._mqtt_topics:
             return self._sensor_data.copy()
-            
-        except Exception as e:
-            await self.error_handler.handle_error(e, "Health Check")
-            return self._sensor_data.copy()
+
+        if not self.mqtt_service.is_connected:
+            _LOGGER.warning("MQTT-Verbindung nicht verfügbar")
+            if not await self.mqtt_service.connect():
+                raise UpdateFailed("MQTT nicht verbunden")
+
+        if not self.mqtt_service.is_connected:
+            raise UpdateFailed("MQTT-Verbindung wird hergestellt")
+
+        if not self.mqtt_service.subscriptions_ready:
+            if not await self.mqtt_service.restore_subscriptions():
+                raise UpdateFailed("MQTT-Topics nicht abonniert")
+
+        return self._sensor_data.copy()
 
     async def _on_mqtt_connected_event(self, event: Any) -> None:
         """Reagiere auf MQTT-Connect: UI-Update triggern."""
@@ -283,7 +282,7 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         if event.data.get("entry_id") != self.entry.entry_id:
             return
         try:
-            self.async_set_updated_data(self._sensor_data)
+            self.async_set_update_error(UpdateFailed("MQTT nicht verbunden"))
         except Exception as e:
             _LOGGER.debug("Fehler beim Verarbeiten des MQTT-Disconnect-Events: %s", e)
 
@@ -337,7 +336,8 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         """Richtet MQTT-Topics ein."""
         try:
             _LOGGER.debug("Richte MQTT-Topics ein")
-            
+            topics: list[str] = []
+
             # Topics für ausgewählte Geräte
             for device_id in self.selected_devices:
                 device_info = await self.config_service.get_device_by_id(device_id)
@@ -347,7 +347,7 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
                     if topic_pattern:
                         # Topic-Pattern enthält bereits die Device-ID
                         topic = topic_pattern
-                        self._mqtt_topics.append(topic)
+                        topics.append(topic)
                         _LOGGER.debug("Topic für %s: %s", device_id, topic)
                     else:
                         _LOGGER.warning("Kein topic_pattern für Gerät %s gefunden", device_id)
@@ -365,7 +365,7 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
                     topic_pattern = median_info.get("topic_pattern")
                     if topic_pattern:
                         topic = topic_pattern
-                        self._mqtt_topics.append(topic)
+                        topics.append(topic)
                         _LOGGER.debug("Median Topic für %s: %s", entity_id, topic)
                     else:
                         _LOGGER.warning(
@@ -376,6 +376,7 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
                         "Median-Entity %s nicht in der Konfiguration gefunden", entity_id
                     )
             
+            self._mqtt_topics = list(dict.fromkeys(topics))
             _LOGGER.debug("MQTT-Topics eingerichtet: %s", self._mqtt_topics)
             
         except Exception as e:

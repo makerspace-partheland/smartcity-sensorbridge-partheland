@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import ssl
+import threading
 import uuid
 from typing import Any, Callable, Dict, Optional
 
@@ -16,6 +17,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import (
     CLIENT_ID_PREFIX,
+    DOMAIN,
     EVENT_MQTT_CONNECTED,
     EVENT_MQTT_DISCONNECTED,
     MQTT_VERSION,
@@ -41,9 +43,15 @@ class MQTTService(MQTTServiceProtocol):
         self.client: Optional[mqtt.Client] = None
         self._connected = False
         self._callbacks: Dict[str, Callable[[str, Any], None]] = {}
+        self._active_subscriptions: set[str] = set()
+        self._subscription_waiters: Dict[int, asyncio.Future[bool]] = {}
+        self._subscription_results: Dict[int, bool] = {}
+        self._subscription_expected_mids: set[int] = set()
+        self._subscription_unregistered_mids: set[int] = set()
+        self._subscription_quarantined_mids: set[int] = set()
+        self._subscription_ack_lock = threading.Lock()
+        self._subscription_ack_timeout = 10
         self._client_id = f"{CLIENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
-        self._reconnect_task: Optional[asyncio.Task] = None
-        self._reconnect_delay = 3  # Kürzerer Delay für öffentliche Broker (Default, konfigurierbar)
         self._broker_url: Optional[str] = None
         self._broker_port: Optional[int] = None
         self._ws_path: str = "/"  # Default WebSocket path
@@ -53,14 +61,44 @@ class MQTTService(MQTTServiceProtocol):
         self._keepalive: int = 60
         self._reconnect_min_delay: int = 1
         self._reconnect_max_delay: int = 120
-        # Merke abonnierte Topics für automatische Re-Subscription nach Reconnect
-        # (Keys: Topic, Values: Callback)
+        self._subscription_lock = asyncio.Lock()
+        self._connection_lock = asyncio.Lock()
+        self._loop_started = False
+        self._force_client_recreation = False
+        self._replacing_client = False
+        self._stopping = False
     
     async def connect(self) -> bool:
         """Verbindet zum MQTT-Broker."""
+        async with self._connection_lock:
+            if self._stopping:
+                return False
+            network_loop_running = self._network_loop_running()
+            if (
+                not self._force_client_recreation
+                and network_loop_running
+            ):
+                return True
+            if self._loop_started and not network_loop_running:
+                self._loop_started = False
+            if (
+                self._connected
+                or self._loop_started
+                or self._force_client_recreation
+            ):
+                self._connected = False
+                self._active_subscriptions.clear()
+
+            return await self._connect_locked()
+
+    async def _connect_locked(self) -> bool:
+        """Verbindet unter exklusiver Kontrolle des Verbindungszustands."""
         try:
             # MQTT-Konfiguration laden
             mqtt_config = await self.config_service.get_mqtt_config()
+            if self._stopping:
+                return False
+
             self._broker_url = mqtt_config.get("broker_url")
             # Optional konfigurierbare Parameter mit Bounds
             try:
@@ -75,34 +113,46 @@ class MQTTService(MQTTServiceProtocol):
                     self._reconnect_min_delay = 1
                 if self._reconnect_max_delay < self._reconnect_min_delay:
                     self._reconnect_max_delay = self._reconnect_min_delay
-                initial_delay = int(mqtt_config.get("initial_reconnect_delay", 3))
-                self._reconnect_delay = max(1, min(initial_delay, self._reconnect_max_delay))
             except Exception:
                 # Defaults bleiben erhalten
                 pass
-            
+
             if not self._broker_url:
                 _LOGGER.error("Keine Broker-URL in der Konfiguration gefunden")
                 return False
-            
+
             # Broker-URL parsen
             broker_host, broker_port = self._parse_broker_url(self._broker_url)
             self._broker_port = broker_port
-            
+
             _LOGGER.debug("Verbinde zum MQTT-Broker: %s:%d", broker_host, broker_port)
-            
+
             # Bestehenden Client bereinigen
             if self.client:
+                self._replacing_client = True
                 try:
-                    await self.hass.async_add_executor_job(self.client.loop_stop)
+                    if self._loop_started:
+                        await self.hass.async_add_executor_job(
+                            self.client.loop_stop
+                        )
                     await self.hass.async_add_executor_job(self.client.disconnect)
                 except Exception as e:
                     _LOGGER.debug("Fehler beim Bereinigen des alten Clients: %s", e)
-            
+                finally:
+                    self._loop_started = False
+                    self._connected = False
+                    self._active_subscriptions.clear()
+                    self._fail_pending_subscriptions()
+                    self._replacing_client = False
+            if self._stopping:
+                return False
+
             # SSL-Context im Executor erstellen (vermeidet Blocking im Event Loop)
             if self._broker_url.startswith("wss://"):
                 self._ssl_context = await self.hass.async_add_executor_job(self._create_ssl_context)
-            
+            if self._stopping:
+                return False
+
             # MQTT Client erstellen (Callback API Version 2)
             self.client = mqtt.Client(
                 callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -110,12 +160,16 @@ class MQTTService(MQTTServiceProtocol):
                 protocol=mqtt.MQTTv311 if MQTT_VERSION == 4 else mqtt.MQTTv5,
                 transport="websockets"
             )
-            
+            with self._subscription_ack_lock:
+                self._subscription_quarantined_mids.clear()
+            self._force_client_recreation = False
+
             # Callbacks setzen
             self.client.on_connect = self._on_connect
             self.client.on_disconnect = self._on_disconnect
             self.client.on_message = self._on_message
-            
+            self.client.on_subscribe = self._on_subscribe
+
             # WebSocket-Verbindung konfigurieren
             if self._broker_url.startswith("wss://") and self._ssl_context:
                 _LOGGER.debug("Konfiguriere WebSocket-Verbindung mit Pfad: %s", self._ws_path)
@@ -126,23 +180,35 @@ class MQTTService(MQTTServiceProtocol):
                 except Exception as e:
                     _LOGGER.warning("Fehler bei WebSocket-Konfiguration: %s", e)
                     _LOGGER.info("Versuche Fallback-Verbindung ohne spezielle WebSocket-Konfiguration")
-            
+
             # Verbindungsoptionen setzen
             self.client.reconnect_delay_set(min_delay=self._reconnect_min_delay, max_delay=self._reconnect_max_delay)
-            
+
             # Keep-Alive und Timeout konfigurieren
             self.client.keepalive = self._keepalive
             self.client.max_inflight_messages_set(20)
-            
+
             # Für öffentliche Broker: Keine Authentifizierung
             _LOGGER.debug("Konfiguriere Verbindung für öffentlichen MQTT-Broker")
-            
+
             # Verbindung herstellen
             _LOGGER.debug("Starte MQTT-Verbindung zu %s:%d", broker_host, broker_port)
             try:
-                await self.hass.async_add_executor_job(
-                    self.client.connect, broker_host, broker_port, 60
+                connect_result = await self.hass.async_add_executor_job(
+                    self.client.connect,
+                    broker_host,
+                    broker_port,
+                    self._keepalive,
                 )
+                if self._stopping:
+                    await self.hass.async_add_executor_job(self.client.disconnect)
+                    return False
+                if connect_result != mqtt.MQTT_ERR_SUCCESS:
+                    _LOGGER.error(
+                        "MQTT-Verbindungsaufbau fehlgeschlagen: %s",
+                        connect_result,
+                    )
+                    return False
             except Exception as connect_error:
                 _LOGGER.error("Fehler bei MQTT-Verbindungsaufbau: %s", connect_error)
                 if "Connection refused" in str(connect_error):
@@ -154,19 +220,32 @@ class MQTTService(MQTTServiceProtocol):
                 elif "websocket" in str(connect_error).lower():
                     _LOGGER.error("WebSocket-Fehler - Prüfe URL und Pfad")
                 return False
-            
+
             # Loop starten
             await self.hass.async_add_executor_job(self.client.loop_start)
-            
+            self._loop_started = True
+            if self._stopping:
+                await self.hass.async_add_executor_job(self.client.loop_stop)
+                await self.hass.async_add_executor_job(self.client.disconnect)
+                self._loop_started = False
+                return False
+
             # Event-Processor starten
             self._start_event_processor()
-            
+
             _LOGGER.debug("MQTT-Verbindung erfolgreich hergestellt")
             return True
-            
+
         except Exception as e:
             _LOGGER.error("Fehler beim MQTT-Verbinden: %s", e)
             return False
+
+    def _network_loop_running(self) -> bool:
+        """Prüft, ob Pahos Netzwerk-Thread tatsächlich noch läuft."""
+        if not self._loop_started or self.client is None:
+            return False
+        thread = getattr(self.client, "_thread", None)
+        return bool(thread is not None and thread.is_alive())
     
     def _create_ssl_context(self) -> ssl.SSLContext:
         """Erstellt SSL-Context im Executor (vermeidet Blocking im Event Loop)."""
@@ -206,98 +285,192 @@ class MQTTService(MQTTServiceProtocol):
     
     async def disconnect(self) -> None:
         """Trennt die MQTT-Verbindung."""
-        if self.client:
-            try:
-                _LOGGER.debug("Trenne MQTT-Verbindung")
-                
-                # Event-Processor stoppen
-                self._stop_event_processor()
-                
-                # Reconnect-Task stoppen
-                if self._reconnect_task and not self._reconnect_task.done():
-                    self._reconnect_task.cancel()
-                
-                # Loop stoppen
-                await self.hass.async_add_executor_job(self.client.loop_stop)
-                
-                # Verbindung trennen
-                await self.hass.async_add_executor_job(self.client.disconnect)
-                
+        self._stopping = True
+        async with self._connection_lock:
+            if self.client:
+                try:
+                    _LOGGER.debug("Trenne MQTT-Verbindung")
+
+                    # Event-Processor stoppen
+                    await self._stop_event_processor()
+
+                    # Loop stoppen
+                    if self._loop_started:
+                        await self.hass.async_add_executor_job(
+                            self.client.loop_stop
+                        )
+
+                    # Verbindung trennen
+                    await self.hass.async_add_executor_job(self.client.disconnect)
+
+                    _LOGGER.debug("MQTT-Verbindung getrennt")
+
+                except Exception as e:
+                    _LOGGER.error("Fehler beim MQTT-Trennen: %s", e)
+                    raise
+                finally:
+                    self._connected = False
+                    self._loop_started = False
+                    self._active_subscriptions.clear()
+                    self._fail_pending_subscriptions()
+            else:
                 self._connected = False
-                _LOGGER.debug("MQTT-Verbindung getrennt")
-                
-            except Exception as e:
-                _LOGGER.error("Fehler beim MQTT-Trennen: %s", e)
-                raise
+                self._loop_started = False
+                self._active_subscriptions.clear()
+                self._fail_pending_subscriptions()
     
     async def subscribe(self, topic: str, callback: Callable[[str, Any], None]) -> None:
-        """Abonniert ein MQTT-Topic."""
-        try:
-            if not self.client:
-                _LOGGER.warning("MQTT-Client nicht verfügbar, kann Topic nicht abonnieren: %s", topic)
+        """Merkt ein Topic und abonniert es bei bestehender Verbindung."""
+        self._callbacks[topic] = callback
+        async with self._subscription_lock:
+            if (
+                not self.client
+                or not self._connected
+                or topic in self._active_subscriptions
+            ):
                 return
-            
-            # Warten bis Verbindung hergestellt ist (max 10 Sekunden)
-            max_wait = 10
-            wait_time = 0
-            while not self._connected and wait_time < max_wait:
-                await asyncio.sleep(0.1)
-                wait_time += 0.1
-            
-            if not self._connected:
-                _LOGGER.warning("MQTT-Verbindung nicht hergestellt nach %d Sekunden, kann Topic nicht abonnieren: %s", max_wait, topic)
-                return
-            
-            # Callback registrieren
-            self._callbacks[topic] = callback
-            
-            # Topic abonnieren
-            result, mid = await self.hass.async_add_executor_job(
-                self.client.subscribe, topic, 0
+            await self._subscribe_topic(topic)
+
+    async def _subscribe_topic(self, topic: str) -> None:
+        """Abonniert ein vorgemerktes Topic beim Broker."""
+        if not self.client or not self._connected:
+            raise RuntimeError("MQTT ist nicht verbunden")
+
+        client = self.client
+        result, mid, quarantined_mid = await self.hass.async_add_executor_job(
+            self._subscribe_and_track_ack, client, topic
+        )
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            raise RuntimeError(
+                f"MQTT-Topic {topic} konnte nicht abonniert werden: {result}"
             )
-            
-            if result == mqtt.MQTT_ERR_SUCCESS:
-                _LOGGER.debug("Topic erfolgreich abonniert: %s (MID: %d)", topic, mid)
-            else:
-                _LOGGER.error("Fehler beim Abonnieren von Topic %s: %d", topic, result)
-                
-        except Exception as e:
-            _LOGGER.error("Fehler beim Abonnieren von Topic %s: %s", topic, e)
+        if quarantined_mid:
+            self._force_client_recreation = True
+            self._connected = False
+            raise RuntimeError(
+                "MQTT-Abonnement benötigt einen neuen Verbindungsaufbau"
+            )
+        if client is not self.client or not self._connected:
+            self._discard_subscription_ack(mid)
+            raise RuntimeError("MQTT-Verbindung wurde während des Abonnements getrennt")
+
+        acknowledged = asyncio.get_running_loop().create_future()
+        self._subscription_waiters[mid] = acknowledged
+        with self._subscription_ack_lock:
+            self._subscription_unregistered_mids.discard(mid)
+        self._handle_subscription_result(mid)
+
+        try:
+            accepted = await asyncio.wait_for(
+                acknowledged,
+                timeout=self._subscription_ack_timeout,
+            )
+        except asyncio.TimeoutError as err:
+            with self._subscription_ack_lock:
+                self._subscription_quarantined_mids.add(mid)
+            self._force_client_recreation = True
+            self._connected = False
+            raise RuntimeError(
+                f"MQTT-Topic {topic} wurde vom Broker nicht bestätigt"
+            ) from err
+        finally:
+            self._subscription_waiters.pop(mid, None)
+            self._discard_subscription_ack(mid)
+
+        if not accepted:
+            raise RuntimeError(
+                f"MQTT-Topic {topic} wurde vom Broker abgelehnt"
+            )
+        self._active_subscriptions.add(topic)
+        _LOGGER.debug("Topic erfolgreich abonniert: %s (MID: %d)", topic, mid)
+
+    def _subscribe_and_track_ack(
+        self,
+        client: mqtt.Client,
+        topic: str,
+    ) -> tuple[int, int, bool]:
+        """Sendet SUBSCRIBE und registriert die MID vor einem möglichen SUBACK."""
+        with self._subscription_ack_lock:
+            result, mid = client.subscribe(topic, 0)
+            quarantined_mid = (
+                result == mqtt.MQTT_ERR_SUCCESS
+                and mid in self._subscription_quarantined_mids
+            )
+            if result == mqtt.MQTT_ERR_SUCCESS and not quarantined_mid:
+                self._subscription_expected_mids.add(mid)
+                self._subscription_unregistered_mids.add(mid)
+            return result, mid, quarantined_mid
+
+    def _discard_subscription_ack(self, mid: int) -> None:
+        """Entfernt alle Zustände einer abgeschlossenen SUBACK-Zuordnung."""
+        with self._subscription_ack_lock:
+            self._subscription_expected_mids.discard(mid)
+            self._subscription_unregistered_mids.discard(mid)
+            self._subscription_results.pop(mid, None)
+
+    async def restore_subscriptions(self) -> bool:
+        """Stellt alle vorgemerkten Topic-Abonnements wieder her."""
+        return await self._resubscribe_all()
     
     async def unsubscribe(self, topic: str) -> None:
         """Deabonniert ein MQTT-Topic."""
-        if not self.client or not self._connected:
-            self._callbacks.pop(topic, None)
-            return
-        
-        try:
-            # Topic deabonnieren
-            result = await self.hass.async_add_executor_job(
-                self.client.unsubscribe, topic
-            )
-            
-            if result[0] == mqtt.MQTT_ERR_SUCCESS:
+        async with self._subscription_lock:
+            if not self.client or not self._connected:
                 self._callbacks.pop(topic, None)
-                _LOGGER.debug("Topic erfolgreich deabonniert: %s", topic)
-            else:
-                raise RuntimeError(
-                    f"MQTT-Topic {topic} konnte nicht gekündigt werden: "
-                    f"{result[0]}"
+                self._active_subscriptions.discard(topic)
+                return
+
+            try:
+                result = await self.hass.async_add_executor_job(
+                    self.client.unsubscribe, topic
                 )
-                
-        except Exception as e:
-            _LOGGER.error("Fehler beim Deabonnieren von Topic %s: %s", topic, e)
-            raise
+
+                if result[0] == mqtt.MQTT_ERR_SUCCESS:
+                    self._callbacks.pop(topic, None)
+                    self._active_subscriptions.discard(topic)
+                    _LOGGER.debug("Topic erfolgreich deabonniert: %s", topic)
+                else:
+                    raise RuntimeError(
+                        f"MQTT-Topic {topic} konnte nicht gekündigt werden: "
+                        f"{result[0]}"
+                    )
+
+            except Exception as e:
+                _LOGGER.error(
+                    "Fehler beim Deabonnieren von Topic %s: %s", topic, e
+                )
+                raise
     
     @property
     def is_connected(self) -> bool:
         """Gibt zurück ob die MQTT-Verbindung aktiv ist."""
-        return self._connected
+        return self._connected and self._network_loop_running()
+
+    @property
+    def subscriptions_ready(self) -> bool:
+        """Gibt zurück, ob alle vorgemerkten Topics aktiv sind."""
+        return self._connected and set(self._callbacks).issubset(
+            self._active_subscriptions
+        )
+
+    @staticmethod
+    def _reason_code_value(reason_code: Any) -> Any:
+        """Gibt einen stabil vergleichbaren Paho-Reason-Code zurück."""
+        value = getattr(reason_code, "value", reason_code)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return str(value)
 
     def _on_connect(self, client: mqtt.Client, userdata: Any, flags: Dict, reason_code, properties=None) -> None:
         """Callback für MQTT-Verbindung (API Version 2)."""
+        if client is not self.client:
+            return
+        if self._force_client_recreation:
+            return
         if reason_code == 0:
             self._connected = True
+            self._active_subscriptions.clear()
             _LOGGER.info("MQTT-Verbindung erfolgreich hergestellt")
 
             # Thread-sicher: Event in Queue einreihen über Event Loop
@@ -307,7 +480,7 @@ class MQTTService(MQTTServiceProtocol):
         else:
             self._connected = False
             # Neue API verwendet ReasonCode-Objekte statt Integer-Codes
-            reason_code_value = int(reason_code) if hasattr(reason_code, '__int__') else reason_code
+            reason_code_value = self._reason_code_value(reason_code)
             error_messages = {
                 1: "Unacceptable protocol version",
                 2: "Identifier rejected",
@@ -329,13 +502,21 @@ class MQTTService(MQTTServiceProtocol):
     
     def _on_disconnect(self, client: mqtt.Client, userdata: Any, flags, reason_code, properties=None) -> None:
         """Callback für MQTT-Trennung (API Version 2)."""
+        if client is not self.client:
+            return
+        if self._replacing_client:
+            return
         self._connected = False
+        self._active_subscriptions.clear()
+        self.hass.loop.call_soon_threadsafe(
+            self._fail_pending_subscriptions
+        )
         # Freundlichere Fehlermeldung für gängige Gründe
         if reason_code == 0:
             _LOGGER.info("MQTT-Verbindung ordnungsgemäß getrennt")
         else:
             # Neue API verwendet ReasonCode-Objekte statt Integer-Codes
-            reason_code_value = int(reason_code) if hasattr(reason_code, '__int__') else reason_code
+            reason_code_value = self._reason_code_value(reason_code)
             reason_map = {
                 getattr(mqtt, "MQTT_ERR_CONN_LOST", 7): "Verbindung verloren",
                 getattr(mqtt, "MQTT_ERR_NO_CONN", 4): "Keine Verbindung",
@@ -346,13 +527,61 @@ class MQTTService(MQTTServiceProtocol):
             _LOGGER.warning("MQTT-Verbindung unerwartet getrennt (%s)", msg)
         
         # Thread-sicher: Event in Queue einreihen über Event Loop
-        self.hass.loop.call_soon_threadsafe(
-            self._queue_event, "disconnect", reason_code
+        if not self._stopping:
+            self.hass.loop.call_soon_threadsafe(
+                self._queue_event, "disconnect", reason_code
+            )
+
+    def _on_subscribe(
+        self,
+        client: mqtt.Client,
+        userdata: Any,
+        mid: int,
+        reason_codes: list[Any],
+        properties: Any = None,
+    ) -> None:
+        """Verarbeitet die Bestätigung eines Topic-Abonnements."""
+        if client is not self.client:
+            return
+        values = [self._reason_code_value(code) for code in reason_codes]
+        accepted = bool(values) and all(
+            isinstance(value, int) and value < 128 for value in values
         )
-        
-        # Reconnect nur bei unerwarteter Trennung starten
-        if reason_code != 0:
-            self.hass.loop.call_soon_threadsafe(self._start_reconnect_thread_safe)
+        with self._subscription_ack_lock:
+            if mid not in self._subscription_expected_mids:
+                return
+            self._subscription_results[mid] = accepted
+        self.hass.loop.call_soon_threadsafe(
+            self._handle_subscription_result,
+            mid,
+        )
+
+    def _handle_subscription_result(self, mid: int) -> None:
+        """Ordnet eine SUBACK-Bestätigung dem wartenden Abonnement zu."""
+        waiter = self._subscription_waiters.get(mid)
+        with self._subscription_ack_lock:
+            if mid in self._subscription_unregistered_mids:
+                return
+            if mid not in self._subscription_results:
+                return
+            accepted = self._subscription_results.pop(mid)
+            self._subscription_expected_mids.discard(mid)
+        if waiter is None or waiter.done():
+            return
+        waiter.set_result(accepted)
+
+    def _fail_pending_subscriptions(self) -> None:
+        """Beendet wartende Abonnements nach einem Verbindungsabbruch."""
+        for waiter in self._subscription_waiters.values():
+            if not waiter.done():
+                waiter.set_result(False)
+        with self._subscription_ack_lock:
+            self._subscription_quarantined_mids.update(
+                self._subscription_expected_mids
+            )
+            self._subscription_results.clear()
+            self._subscription_expected_mids.clear()
+            self._subscription_unregistered_mids.clear()
     
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         """Callback für MQTT-Nachrichten."""
@@ -376,23 +605,24 @@ class MQTTService(MQTTServiceProtocol):
         else:
             _LOGGER.debug("Kein Callback für Topic %s registriert", topic)
 
-    async def _resubscribe_all(self) -> None:
+    async def _resubscribe_all(self) -> bool:
         """Abonniert alle zuvor registrierten Topics nach einem Reconnect erneut."""
-        if not self.client or not self._connected:
-            return
-        if not self._callbacks:
-            return
-        for topic in list(self._callbacks.keys()):
-            try:
-                result, mid = await self.hass.async_add_executor_job(
-                    self.client.subscribe, topic, 0
-                )
-                if result == mqtt.MQTT_ERR_SUCCESS:
-                    _LOGGER.debug("Topic nach Reconnect erneut abonniert: %s (MID: %d)", topic, mid)
-                else:
-                    _LOGGER.warning("Re-Subscription fehlgeschlagen für %s: %s", topic, result)
-            except Exception as e:
-                _LOGGER.error("Fehler bei Re-Subscription für %s: %s", topic, e)
+        async with self._subscription_lock:
+            if not self.client or not self._connected:
+                return False
+            if not self._callbacks:
+                return True
+            success = True
+            for topic in list(self._callbacks.keys()):
+                try:
+                    if topic not in self._active_subscriptions:
+                        await self._subscribe_topic(topic)
+                except Exception as e:
+                    success = False
+                    _LOGGER.error(
+                        "Fehler bei Re-Subscription für %s: %s", topic, e
+                    )
+            return success and self.subscriptions_ready
     
     def _execute_callback_safe(self, callback: Callable[[str, Any], None], topic: str, payload: Any) -> None:
         """Führt Callback sicher aus (vermeidet Coroutine-Probleme)."""
@@ -415,60 +645,32 @@ class MQTTService(MQTTServiceProtocol):
         except asyncio.QueueFull:
             _LOGGER.warning("Event-Queue voll, ignoriere %s-Event", event_type)
     
-    def _start_reconnect_thread_safe(self) -> None:
-        """Thread-sicher: Startet den Reconnect-Prozess."""
-        if self._reconnect_task and not self._reconnect_task.done():
-            _LOGGER.debug("Reconnect bereits in Bearbeitung, überspringe")
-            return
-        
-        _LOGGER.info("Starte MQTT-Reconnect in %d Sekunden", self._reconnect_delay)
-        
-        async def _reconnect() -> None:
-            try:
-                await asyncio.sleep(self._reconnect_delay)
-                
-                # Prüfen ob bereits verbunden
-                if self._connected:
-                    _LOGGER.debug("Bereits verbunden, überspringe Reconnect")
-                    return
-                
-                success = await self.connect()
-                if not success:
-                    # Für öffentliche Broker: Kürzere Delays (max 30 Sekunden)
-                    self._reconnect_delay = min(self._reconnect_delay * 1.2, 30)
-                    _LOGGER.warning("MQTT-Reconnect fehlgeschlagen, nächster Versuch in %d Sekunden", self._reconnect_delay)
-                else:
-                    # Bei Erfolg Reconnect-Delay zurücksetzen
-                    self._reconnect_delay = 3  # Kürzerer initialer Delay für öffentliche Broker
-                    _LOGGER.info("MQTT-Reconnect erfolgreich")
-                    
-            except Exception as e:
-                _LOGGER.error("Fehler beim MQTT-Reconnect: %s", e)
-                # Bei Fehler auch Delay erhöhen
-                self._reconnect_delay = min(self._reconnect_delay * 1.2, 30)
-            finally:
-                # Task als beendet markieren
-                self._reconnect_task = None
-        
-        # Thread-sicher: Task über Event Loop erstellen
-        self._reconnect_task = self.hass.async_create_task(_reconnect())
-    
     def _start_event_processor(self) -> None:
         """Startet den Event-Processor."""
         if self._event_processor_task and not self._event_processor_task.done():
             return
         
-        # Thread-sicher: Task über Event Loop erstellen
-        self._event_processor_task = self.hass.async_create_task(self._process_events())
+        self._event_processor_task = self.hass.async_create_background_task(
+            self._process_events(),
+            f"{DOMAIN} MQTT events {self.entry_id}",
+            eager_start=False,
+        )
         _LOGGER.debug("Event-Processor gestartet")
     
-    def _stop_event_processor(self) -> None:
+    async def _stop_event_processor(self) -> None:
         """Stoppt den Event-Processor."""
-        if self._event_processor_task:
-            if not self._event_processor_task.done():
-                self._event_processor_task.cancel()
+        task = self._event_processor_task
+        if task is None:
+            return
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        if self._event_processor_task is task:
             self._event_processor_task = None
-            _LOGGER.debug("Event-Processor beendet")
+        _LOGGER.debug("Event-Processor beendet")
     
     async def _process_events(self) -> None:
         """Verarbeitet Events aus der Queue."""
@@ -485,12 +687,16 @@ class MQTTService(MQTTServiceProtocol):
                     if event_type == "connect":
                         if self.hass is not None and hasattr(self.hass, 'bus') and self.hass.bus is not None:
                             try:
-                                self.hass.bus.async_fire(
-                                    EVENT_MQTT_CONNECTED,
-                                    {"entry_id": self.entry_id},
-                                )
-                                # Nach erfolgreichem Reconnect automatisch alle Topics erneut abonnieren
-                                await self._resubscribe_all()
+                                if await self.restore_subscriptions():
+                                    self.hass.bus.async_fire(
+                                        EVENT_MQTT_CONNECTED,
+                                        {"entry_id": self.entry_id},
+                                    )
+                                else:
+                                    _LOGGER.warning(
+                                        "MQTT verbunden, aber Topics nicht "
+                                        "vollständig abonniert"
+                                    )
                             except Exception as e:
                                 _LOGGER.error("Fehler beim Firen des Connect-Events: %s", e)
                         else:

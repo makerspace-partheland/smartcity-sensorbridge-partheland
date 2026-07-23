@@ -5,6 +5,7 @@ from contextlib import suppress
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -14,16 +15,21 @@ from custom_components.sensorbridge_partheland import (
     _PENDING_RUNTIME_TASKS,
     _async_retry_pending_runtime_shutdown,
     _async_schedule_pending_runtime_cleanup,
+    _async_start_supplemental_source,
     async_setup_entry,
     async_unload_entry,
 )
 from custom_components.sensorbridge_partheland.const import (
     CONF_INCLUDE_DWD_POLLEN,
+    CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
     CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
+    CONF_INCLUDE_GEOBOX_BRANDIS,
     DOMAIN,
     DWD_POLLEN_SOURCE,
+    DWD_PRECIPITATION_STATIONS,
     EVENT_MQTT_CONNECTED,
     EVENT_MQTT_DISCONNECTED,
+    GEOBOX_BRANDIS_SOURCE,
     PLATFORMS,
 )
 from custom_components.sensorbridge_partheland.coordinator import (
@@ -81,7 +87,7 @@ async def test_setup_sets_entry_runtime_data(hass, mocker):
     assert entry.runtime_data.supplemental_coordinators == {}
 
 
-async def test_setup_failure_cleans_started_runtime(hass, mocker):
+async def test_supplemental_setup_failure_is_isolated(hass, mocker):
     coordinator = AsyncMock()
     pollen_coordinator = AsyncMock()
     precipitation_coordinator = AsyncMock()
@@ -109,18 +115,115 @@ async def test_setup_failure_cleans_started_runtime(hass, mocker):
     )
     entry.add_to_hass(hass)
 
-    with pytest.raises(RuntimeError, match="supplemental setup failed"):
-        await async_setup_entry(hass, entry)
+    assert await async_setup_entry(hass, entry) is True
 
-    coordinator.async_shutdown.assert_awaited_once_with()
-    pollen_coordinator.async_shutdown.assert_awaited_once_with()
+    coordinator.async_shutdown.assert_not_awaited()
+    pollen_coordinator.async_shutdown.assert_not_awaited()
     precipitation_coordinator.async_shutdown.assert_awaited_once_with()
-    assert entry.runtime_data is None
+    assert entry.runtime_data is runtime
+    assert runtime.supplemental_coordinators == {
+        DWD_POLLEN_SOURCE: pollen_coordinator
+    }
+
+
+@pytest.mark.parametrize(
+    "failing_source",
+    [
+        DWD_POLLEN_SOURCE,
+        "dwd_precipitation_07362",
+        "dwd_precipitation_07323",
+        GEOBOX_BRANDIS_SOURCE,
+    ],
+)
+async def test_each_supplemental_start_failure_is_isolated(
+    hass, mocker, failing_source
+):
+    coordinator = AsyncMock()
+    source_coordinators = {
+        DWD_POLLEN_SOURCE: AsyncMock(),
+        "dwd_precipitation_07362": AsyncMock(),
+        "dwd_precipitation_07323": AsyncMock(),
+        GEOBOX_BRANDIS_SOURCE: AsyncMock(),
+    }
+    source_coordinators[
+        failing_source
+    ].async_refresh.side_effect = RuntimeError("source failed")
+    runtime = _runtime(coordinator)
+    forward_entry_setups = _prepare_setup(hass, mocker, [runtime])
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.pollen."
+        "DwdPollenCoordinator",
+        return_value=source_coordinators[DWD_POLLEN_SOURCE],
+    )
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.precipitation."
+        "DwdPrecipitationCoordinator",
+        side_effect=lambda _hass, _entry, station_id: source_coordinators[
+            DWD_PRECIPITATION_STATIONS[station_id]["source"]
+        ],
+    )
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.geobox."
+        "GeoBoxBrandisCoordinator",
+        return_value=source_coordinators[GEOBOX_BRANDIS_SOURCE],
+    )
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_INCLUDE_DWD_POLLEN: True,
+            CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS: True,
+            CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: True,
+            CONF_INCLUDE_GEOBOX_BRANDIS: True,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_setup_entry(hass, entry) is True
+
+    forward_entry_setups.assert_awaited_once_with(entry, PLATFORMS)
+    coordinator.async_shutdown.assert_not_awaited()
+    assert set(runtime.supplemental_coordinators) == (
+        set(source_coordinators) - {failing_source}
+    )
+    for source, supplemental in source_coordinators.items():
+        supplemental.async_refresh.assert_awaited_once_with()
+        if source == failing_source:
+            supplemental.async_shutdown.assert_awaited_once_with()
+        else:
+            supplemental.async_shutdown.assert_not_awaited()
+
+
+async def test_failed_supplemental_cleanup_is_not_entity_visible(hass):
+    main_coordinator = AsyncMock()
+    supplemental = AsyncMock()
+    supplemental.async_refresh.side_effect = RuntimeError("source failed")
+    supplemental.async_shutdown.side_effect = [
+        RuntimeError("shutdown failed"),
+        None,
+    ]
+    runtime = _runtime(main_coordinator)
+
+    await _async_start_supplemental_source(
+        hass,
+        runtime,
+        DWD_POLLEN_SOURCE,
+        lambda: supplemental,
+    )
+
+    assert runtime.supplemental_coordinators == {}
+    assert runtime.pending_supplemental_shutdowns == {
+        DWD_POLLEN_SOURCE: supplemental
+    }
+
+    await hass.async_block_till_done()
+
+    assert runtime.pending_supplemental_shutdowns == {}
+    assert supplemental.async_shutdown.await_count == 2
 
 
 async def test_transient_coordinator_failure_becomes_not_ready(hass, mocker):
     coordinator = AsyncMock()
-    coordinator.async_config_entry_first_refresh.side_effect = UpdateFailed(
+    coordinator.async_start.side_effect = UpdateFailed(
         "mqtt unavailable"
     )
     runtime = _runtime(coordinator)
@@ -129,6 +232,21 @@ async def test_transient_coordinator_failure_becomes_not_ready(hass, mocker):
     entry.add_to_hass(hass)
 
     with pytest.raises(ConfigEntryNotReady, match="mqtt unavailable"):
+        await async_setup_entry(hass, entry)
+
+    coordinator.async_shutdown.assert_awaited_once_with()
+    assert entry.runtime_data is None
+
+
+async def test_setup_cancellation_cleans_started_runtime(hass, mocker):
+    coordinator = AsyncMock()
+    coordinator.async_start.side_effect = asyncio.CancelledError()
+    runtime = _runtime(coordinator)
+    _prepare_setup(hass, mocker, [runtime])
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    entry.add_to_hass(hass)
+
+    with pytest.raises(asyncio.CancelledError):
         await async_setup_entry(hass, entry)
 
     coordinator.async_shutdown.assert_awaited_once_with()
@@ -604,7 +722,7 @@ async def test_coordinator_preserves_unexpected_start_error():
     coordinator.error_handler = Mock(handle_error=AsyncMock())
 
     with pytest.raises(RuntimeError, match="programming error"):
-        await coordinator.async_config_entry_first_refresh()
+        await coordinator.async_start()
 
     coordinator.error_handler.handle_error.assert_awaited_once()
 
@@ -614,6 +732,7 @@ async def test_mqtt_connection_events_are_scoped_to_entry():
     coordinator.entry = Mock(entry_id="entry-a")
     coordinator._sensor_data = {}
     coordinator.async_set_updated_data = Mock()
+    coordinator.async_set_update_error = Mock()
 
     await coordinator._on_mqtt_connected_event(
         Mock(data={"entry_id": "entry-b"})
@@ -629,7 +748,8 @@ async def test_mqtt_connection_events_are_scoped_to_entry():
     await coordinator._on_mqtt_disconnected_event(
         Mock(data={"entry_id": "entry-a"})
     )
-    assert coordinator.async_set_updated_data.call_count == 2
+    coordinator.async_set_updated_data.assert_called_once_with({})
+    coordinator.async_set_update_error.assert_called_once()
 
 
 async def test_mqtt_service_emits_entry_scoped_connection_event(hass):
@@ -637,21 +757,23 @@ async def test_mqtt_service_emits_entry_scoped_connection_event(hass):
     service = MQTTService(hass, config_service, "entry-a")
     service._resubscribe_all = AsyncMock()
     events = []
+
+    @callback
+    def record_event(event):
+        events.append(event)
+
     remove_connected_listener = hass.bus.async_listen(
-        EVENT_MQTT_CONNECTED, events.append
+        EVENT_MQTT_CONNECTED, record_event
     )
     remove_disconnected_listener = hass.bus.async_listen(
-        EVENT_MQTT_DISCONNECTED, events.append
+        EVENT_MQTT_DISCONNECTED, record_event
     )
     processor = asyncio.create_task(service._process_events())
 
     try:
         await service._event_queue.put(("connect", None))
         await service._event_queue.put(("disconnect", None))
-        for _attempt in range(20):
-            await asyncio.sleep(0)
-            if len(events) == 2:
-                break
+        await service._event_queue.join()
     finally:
         processor.cancel()
         with suppress(asyncio.CancelledError):
