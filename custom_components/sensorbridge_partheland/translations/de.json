@@ -28,7 +28,7 @@
         }
       },
       "selection_menu": {
-        "title": "Auswahl erweitern oder abschließen",
+        "title": "Auswahl verwalten",
         "description": "Ausgewählt: {device_count} direkte Messquellen und {median_count} Mediane.",
         "menu_options": {
           "search": "Weitere Messquellen suchen",
@@ -94,7 +94,7 @@
         }
       },
       "selection_menu": {
-        "title": "Auswahl erweitern oder abschließen",
+        "title": "Auswahl verwalten",
         "description": "Ausgewählt: {device_count} direkte Messquellen und {median_count} Mediane.",
         "menu_options": {
           "search": "Weitere Messquellen suchen",
