@@ -3,22 +3,45 @@
     "title": "SmartCity SensorBridge Partheland",
     "step": {
       "user": {
-        "title": "SmartCity SensorBridge",
-        "description": "Connect to the SmartCity Partheland sensor network.\n\nThe integration will automatically discover available sensors."
+        "title": "Select measurement sources",
+        "description": "Search for specific measurement sources or show all available ones.",
+        "menu_options": {
+          "search": "Search measurement sources",
+          "all_devices": "Show all measurement sources"
+        }
+      },
+      "search": {
+        "title": "Search measurement sources",
+        "description": "Search by place, station name, measurement ID, or device type.",
+        "data": {
+          "search_term": "Search term"
+        }
       },
       "device_selection": {
-        "title": "Device Configuration",
-        "description": "Select your desired devices.\n\n**Individual devices**: Direct data from individual measurement stations\n**Median**: Failover safety through median values from multiple devices per location (choose Partheland for maximum safety)",
+        "title": "Select measurement sources",
+        "description": "{result_count} results. Previously selected measurement sources outside this view remain selected. Total selected: {selected_count}.",
         "data": {
-          "selected_devices": "Select individual devices",
-          "selected_median_entities": "Select median entities"
+          "stations": "senseBox",
+          "water_level": "Water level",
+          "temperature_moisture": "Temperature and moisture",
+          "selected_median_entities": "Medians"
+        }
+      },
+      "selection_menu": {
+        "title": "Add more or finish",
+        "description": "Selected: {device_count} direct measurement sources and {median_count} medians.",
+        "menu_options": {
+          "search": "Search more measurement sources",
+          "all_devices": "Show all measurement sources",
+          "finish": "Finish selection"
         }
       }
     },
     "error": {
       "cannot_connect": "The device catalog could not be loaded",
+      "keine_treffer": "No matching measurement sources found",
       "unknown": "Unexpected error",
-      "mindestens_eine_auswahl": "Please select at least one device or median",
+      "mindestens_eine_auswahl": "Please select at least one measurement source",
       "validierungsfehler": "Configuration validation error"
     },
     "abort": {
@@ -42,18 +65,45 @@
   },
   "options": {
     "step": {
-      "device_selection": {
-        "title": "Adjust Device Configuration",
-        "description": "Manage your device selection. Already configured devices are pre-selected.",
+      "init": {
+        "title": "Manage measurement sources",
+        "description": "Search for specific measurement sources or show all available ones.",
+        "menu_options": {
+          "search": "Search measurement sources",
+          "all_devices": "Show all measurement sources"
+        }
+      },
+      "search": {
+        "title": "Search measurement sources",
+        "description": "Search by place, station name, measurement ID, or device type.",
         "data": {
-          "selected_devices": "Select individual devices",
-          "selected_median_entities": "Select median entities"
+          "search_term": "Search term"
+        }
+      },
+      "device_selection": {
+        "title": "Select measurement sources",
+        "description": "{result_count} results. Previously selected measurement sources outside this view remain selected. Total selected: {selected_count}.",
+        "data": {
+          "stations": "senseBox",
+          "water_level": "Water level",
+          "temperature_moisture": "Temperature and moisture",
+          "selected_median_entities": "Medians"
+        }
+      },
+      "selection_menu": {
+        "title": "Add more or finish",
+        "description": "Selected: {device_count} direct measurement sources and {median_count} medians.",
+        "menu_options": {
+          "search": "Search more measurement sources",
+          "all_devices": "Show all measurement sources",
+          "finish": "Finish selection"
         }
       }
     },
     "error": {
       "cannot_connect": "Error loading configuration",
-      "mindestens_eine_auswahl": "Please select at least one device or median",
+      "keine_treffer": "No matching measurement sources found",
+      "mindestens_eine_auswahl": "Please select at least one measurement source",
       "validierungsfehler": "Error validating selection"
     }
   },

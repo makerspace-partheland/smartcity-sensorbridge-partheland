@@ -4,6 +4,7 @@ HA 2025 Compliant mit vollständigen Type Hints
 """
 
 from typing import Final
+
 from homeassistant.const import Platform
 
 # Integration Details
@@ -24,6 +25,7 @@ CONF_SELECTED_DEVICES: Final[str] = "selected_devices"
 CONF_SELECTED_MEDIAN_ENTITIES: Final[str] = "selected_median_entities"
 CONF_DEVICE_METADATA: Final[str] = "device_metadata"
 CONF_SENSOR_STATIONS: Final[str] = "sensor_stations"
+CONF_SEARCH_TERM: Final[str] = "search_term"
 CONFIG_ENTRY_VERSION: Final[int] = 2
 
 # Default Values
@@ -49,6 +51,7 @@ ERROR_CANNOT_CONNECT: Final[str] = "cannot_connect"
 ERROR_UNKNOWN: Final[str] = "unknown"
 ERROR_VALIDATION: Final[str] = "validierungsfehler"
 ERROR_NO_SELECTION: Final[str] = "mindestens_eine_auswahl"
+ERROR_NO_MATCHES: Final[str] = "keine_treffer"
 
 # Abort Messages
 ABORT_ALREADY_CONFIGURED: Final[str] = "already_configured"

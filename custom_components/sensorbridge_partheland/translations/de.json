@@ -3,22 +3,45 @@
     "title": "SmartCity SensorBridge Partheland",
     "step": {
       "user": {
-        "title": "SmartCity SensorBridge",
-        "description": "Verbinde dich mit dem SmartCity Partheland Sensornetzwerk.\n\nDie Integration erkennt verfügbare Sensoren automatisch."
+        "title": "Messquellen auswählen",
+        "description": "Suche gezielt nach Messquellen oder zeige alle verfügbaren an.",
+        "menu_options": {
+          "search": "Messquelle suchen",
+          "all_devices": "Alle Messquellen anzeigen"
+        }
+      },
+      "search": {
+        "title": "Messquelle suchen",
+        "description": "Suche nach Ort, Stationsname, Mess-ID oder Gerätetyp.",
+        "data": {
+          "search_term": "Suchbegriff"
+        }
       },
       "device_selection": {
-        "title": "Gerätekonfiguration",
-        "description": "Wähle die gewünschten Geräte aus.\n\n**Einzelgeräte**: Direkte Daten von einzelnen Messstationen\n**Median**: Ausfallsichere Mittelwerte aus mehreren Geräten pro Ort (wähle Partheland für maximale Sicherheit)",
+        "title": "Messquellen auswählen",
+        "description": "{result_count} Treffer. Bereits gewählte Messquellen außerhalb dieser Ansicht bleiben erhalten. Insgesamt ausgewählt: {selected_count}.",
         "data": {
-          "selected_devices": "Einzelne Geräte auswählen",
-          "selected_median_entities": "Median-Entities auswählen"
+          "stations": "senseBox",
+          "water_level": "Wasserstand",
+          "temperature_moisture": "Temperatur und Feuchte",
+          "selected_median_entities": "Mediane"
+        }
+      },
+      "selection_menu": {
+        "title": "Auswahl erweitern oder abschließen",
+        "description": "Ausgewählt: {device_count} direkte Messquellen und {median_count} Mediane.",
+        "menu_options": {
+          "search": "Weitere Messquellen suchen",
+          "all_devices": "Alle Messquellen anzeigen",
+          "finish": "Auswahl abschließen"
         }
       }
     },
     "error": {
       "cannot_connect": "Der Gerätekatalog konnte nicht geladen werden",
+      "keine_treffer": "Keine passenden Messquellen gefunden",
       "unknown": "Unerwarteter Fehler",
-      "mindestens_eine_auswahl": "Bitte wähle mindestens ein Gerät oder einen Median",
+      "mindestens_eine_auswahl": "Bitte wähle mindestens eine Messquelle",
       "validierungsfehler": "Fehler bei der Konfigurationsvalidierung"
     },
     "abort": {
@@ -33,18 +56,45 @@
   },
   "options": {
     "step": {
-      "device_selection": {
-        "title": "Gerätekonfiguration anpassen",
-        "description": "Verwalte deine Gerätauswahl. Bereits konfigurierte Geräte sind vorausgewählt.",
+      "init": {
+        "title": "Messquellen verwalten",
+        "description": "Suche gezielt nach Messquellen oder zeige alle verfügbaren an.",
+        "menu_options": {
+          "search": "Messquelle suchen",
+          "all_devices": "Alle Messquellen anzeigen"
+        }
+      },
+      "search": {
+        "title": "Messquelle suchen",
+        "description": "Suche nach Ort, Stationsname, Mess-ID oder Gerätetyp.",
         "data": {
-          "selected_devices": "Einzelne Geräte auswählen",
-          "selected_median_entities": "Median-Entities auswählen"
+          "search_term": "Suchbegriff"
+        }
+      },
+      "device_selection": {
+        "title": "Messquellen auswählen",
+        "description": "{result_count} Treffer. Bereits gewählte Messquellen außerhalb dieser Ansicht bleiben erhalten. Insgesamt ausgewählt: {selected_count}.",
+        "data": {
+          "stations": "senseBox",
+          "water_level": "Wasserstand",
+          "temperature_moisture": "Temperatur und Feuchte",
+          "selected_median_entities": "Mediane"
+        }
+      },
+      "selection_menu": {
+        "title": "Auswahl erweitern oder abschließen",
+        "description": "Ausgewählt: {device_count} direkte Messquellen und {median_count} Mediane.",
+        "menu_options": {
+          "search": "Weitere Messquellen suchen",
+          "all_devices": "Alle Messquellen anzeigen",
+          "finish": "Auswahl abschließen"
         }
       }
     },
     "error": {
       "cannot_connect": "Fehler beim Laden der Konfiguration",
-      "mindestens_eine_auswahl": "Bitte wähle mindestens ein Gerät oder einen Median",
+      "keine_treffer": "Keine passenden Messquellen gefunden",
+      "mindestens_eine_auswahl": "Bitte wähle mindestens eine Messquelle",
       "validierungsfehler": "Fehler bei der Validierung der Auswahl"
     }
   },
