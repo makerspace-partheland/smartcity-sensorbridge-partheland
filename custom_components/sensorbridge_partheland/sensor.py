@@ -28,6 +28,7 @@ from homeassistant.helpers.entity import async_generate_entity_id
 from .const import (
     DOMAIN,
     DWD_POLLEN_SOURCE,
+    DWD_PRECIPITATION_STATIONS,
     MANUFACTURER,
     SUPPLEMENTAL_COORDINATORS,
 )
@@ -83,6 +84,17 @@ async def async_setup_entry(
             from .pollen import create_pollen_entities
 
             entities.extend(create_pollen_entities(pollen_coordinator))
+        for station in DWD_PRECIPITATION_STATIONS.values():
+            precipitation_coordinator = supplemental_coordinators.get(
+                station["source"]
+            )
+            if precipitation_coordinator is None:
+                continue
+            from .precipitation import create_precipitation_entities
+
+            entities.extend(
+                create_precipitation_entities(precipitation_coordinator)
+            )
 
         _LOGGER.info("Created %d sensor entities", len(entities))
         async_add_entities(entities)

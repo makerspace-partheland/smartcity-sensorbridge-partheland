@@ -41,7 +41,9 @@
         "title": "Additional data sources",
         "description": "Select optional public data sources for the Partheland region.",
         "data": {
-          "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)"
+          "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)",
+          "include_dwd_precipitation_brandis": "Precipitation (DWD, Brandis)",
+          "include_dwd_precipitation_belgershain": "Precipitation (DWD, Belgershain)"
         }
       }
     },
@@ -113,7 +115,9 @@
         "title": "Additional data sources",
         "description": "Select optional public data sources for the Partheland region.",
         "data": {
-          "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)"
+          "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)",
+          "include_dwd_precipitation_brandis": "Precipitation (DWD, Brandis)",
+          "include_dwd_precipitation_belgershain": "Precipitation (DWD, Belgershain)"
         }
       }
     },
@@ -455,6 +459,22 @@
           "day_after_tomorrow": {"name": "DWD level day after tomorrow"},
           "last_update": {"name": "Forecast issued"},
           "next_update": {"name": "Next forecast"}
+        }
+      },
+      "precipitation_last_hour": {
+        "name": "Precipitation last hour",
+        "state_attributes": {
+          "last_measurement": {
+            "name": "Last measurement"
+          }
+        }
+      },
+      "precipitation_today": {
+        "name": "Precipitation today",
+        "state_attributes": {
+          "last_measurement": {
+            "name": "Last measurement"
+          }
         }
       }
     },

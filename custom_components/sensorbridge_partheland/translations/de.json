@@ -41,7 +41,9 @@
         "title": "Zusätzliche Datenquellen",
         "description": "Wähle optionale öffentliche Datenquellen für das Partheland aus.",
         "data": {
-          "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)"
+          "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)",
+          "include_dwd_precipitation_brandis": "Niederschlag (DWD, Brandis)",
+          "include_dwd_precipitation_belgershain": "Niederschlag (DWD, Belgershain)"
         }
       }
     },
@@ -104,7 +106,9 @@
         "title": "Zusätzliche Datenquellen",
         "description": "Wähle optionale öffentliche Datenquellen für das Partheland aus.",
         "data": {
-          "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)"
+          "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)",
+          "include_dwd_precipitation_brandis": "Niederschlag (DWD, Brandis)",
+          "include_dwd_precipitation_belgershain": "Niederschlag (DWD, Belgershain)"
         }
       }
     },
@@ -478,6 +482,22 @@
           "day_after_tomorrow": {"name": "DWD-Stufe übermorgen"},
           "last_update": {"name": "Stand der Vorhersage"},
           "next_update": {"name": "Nächste Vorhersage"}
+        }
+      },
+      "precipitation_last_hour": {
+        "name": "Niederschlag letzte Stunde",
+        "state_attributes": {
+          "last_measurement": {
+            "name": "Letzte Messung"
+          }
+        }
+      },
+      "precipitation_today": {
+        "name": "Niederschlag heute",
+        "state_attributes": {
+          "last_measurement": {
+            "name": "Letzte Messung"
+          }
         }
       }
     },

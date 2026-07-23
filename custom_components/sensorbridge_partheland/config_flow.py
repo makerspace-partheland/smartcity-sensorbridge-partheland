@@ -23,6 +23,8 @@ from .const import (
     ABORT_NO_DEVICES,
     CONF_DEVICE_METADATA,
     CONF_INCLUDE_DWD_POLLEN,
+    CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
+    CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
     CONF_SEARCH_TERM,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
@@ -56,12 +58,18 @@ class _AccumulatingSelectionFlow:
         selected_devices: list[str] | None = None,
         selected_medians: list[str] | None = None,
         include_dwd_pollen: bool = False,
+        include_dwd_precipitation_brandis: bool = False,
+        include_dwd_precipitation_belgershain: bool = False,
     ) -> None:
         self.devices: dict[str, dict[str, Any]] = {}
         self.median_entities: dict[str, dict[str, Any]] = {}
         self.selected_devices = set(selected_devices or [])
         self.selected_medians = set(selected_medians or [])
         self.include_dwd_pollen = include_dwd_pollen
+        self.include_dwd_precipitation_brandis = include_dwd_precipitation_brandis
+        self.include_dwd_precipitation_belgershain = (
+            include_dwd_precipitation_belgershain
+        )
         self.extras_changed = False
         self.visible_devices: set[str] = set()
         self.visible_medians: set[str] = set()
@@ -199,6 +207,12 @@ class _AccumulatingSelectionFlow:
             self.include_dwd_pollen = bool(
                 user_input.get(CONF_INCLUDE_DWD_POLLEN, False)
             )
+            self.include_dwd_precipitation_brandis = bool(
+                user_input.get(CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS, False)
+            )
+            self.include_dwd_precipitation_belgershain = bool(
+                user_input.get(CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN, False)
+            )
             self.extras_changed = True
             return self._show_selection_menu()
 
@@ -209,6 +223,14 @@ class _AccumulatingSelectionFlow:
                     vol.Required(
                         CONF_INCLUDE_DWD_POLLEN,
                         default=self.include_dwd_pollen,
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
+                        default=self.include_dwd_precipitation_brandis,
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
+                        default=self.include_dwd_precipitation_belgershain,
                     ): BooleanSelector(),
                 }
             ),
@@ -365,6 +387,12 @@ class ConfigFlow(
                 CONF_SELECTED_MEDIAN_ENTITIES: sorted(self.selected_medians),
                 CONF_DEVICE_METADATA: metadata,
                 CONF_INCLUDE_DWD_POLLEN: self.include_dwd_pollen,
+                CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS: (
+                    self.include_dwd_precipitation_brandis
+                ),
+                CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: (
+                    self.include_dwd_precipitation_belgershain
+                ),
             },
         )
 
@@ -402,6 +430,16 @@ class OptionsFlowHandler(
             current_devices,
             current_medians,
             bool(self.config_entry.data.get(CONF_INCLUDE_DWD_POLLEN, False)),
+            bool(
+                self.config_entry.data.get(
+                    CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS, False
+                )
+            ),
+            bool(
+                self.config_entry.data.get(
+                    CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN, False
+                )
+            ),
         )
         await self._async_initialize_config_service()
         assert self.config_service is not None
@@ -448,6 +486,20 @@ class OptionsFlowHandler(
         }
         if self.extras_changed or CONF_INCLUDE_DWD_POLLEN in self.config_entry.data:
             new_data[CONF_INCLUDE_DWD_POLLEN] = self.include_dwd_pollen
+        if (
+            self.extras_changed
+            or CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS in self.config_entry.data
+        ):
+            new_data[CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS] = (
+                self.include_dwd_precipitation_brandis
+            )
+        if (
+            self.extras_changed
+            or CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN in self.config_entry.data
+        ):
+            new_data[CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN] = (
+                self.include_dwd_precipitation_belgershain
+            )
         self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
         await self.hass.config_entries.async_reload(self.config_entry.entry_id)
         return self.async_create_entry(title="", data={})

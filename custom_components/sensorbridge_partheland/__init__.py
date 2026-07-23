@@ -19,11 +19,14 @@ from .const import (
     CONFIG_ENTRY_VERSION,
     CONF_DEVICE_METADATA,
     CONF_INCLUDE_DWD_POLLEN,
+    CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
+    CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
     DOMAIN,
     DWD_POLLEN_DEVICE_ID,
     DWD_POLLEN_SOURCE,
+    DWD_PRECIPITATION_STATIONS,
     PLATFORMS,
     SUPPLEMENTAL_COORDINATORS,
 )
@@ -255,6 +258,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             pollen_coordinator = DwdPollenCoordinator(hass, entry)
             await pollen_coordinator.async_refresh()
             supplemental_coordinators[DWD_POLLEN_SOURCE] = pollen_coordinator
+        for station_id, station in DWD_PRECIPITATION_STATIONS.items():
+            if not entry.data.get(station["config_key"], False):
+                continue
+            from .precipitation import DwdPrecipitationCoordinator
+
+            precipitation_coordinator = DwdPrecipitationCoordinator(
+                hass, entry, station_id
+            )
+            await precipitation_coordinator.async_refresh()
+            supplemental_coordinators[station["source"]] = (
+                precipitation_coordinator
+            )
         supplemental_by_entry[entry.entry_id] = supplemental_coordinators
 
         # Plattformen laden (idempotent): Vor erneutem Setup sicherstellen, dass nicht doppelt geladen wird
@@ -394,6 +409,18 @@ async def async_remove_config_entry_device(
             changed = True
             supplemental_removed = True
 
+        removed_source = DWD_POLLEN_SOURCE
+        for station in DWD_PRECIPITATION_STATIONS.values():
+            if (
+                external_id == station["device_id"]
+                and data.get(station["config_key"], False)
+            ):
+                data[station["config_key"]] = False
+                changed = True
+                supplemental_removed = True
+                removed_source = station["source"]
+                break
+
         if changed:
             # 1) Config-Entry aktualisieren (damit Auswahl konsistent ist)
             hass.config_entries.async_update_entry(entry, data=data)
@@ -403,11 +430,11 @@ async def async_remove_config_entry_device(
                 SUPPLEMENTAL_COORDINATORS, {}
             )
             supplemental_coordinators = supplemental_by_entry.get(entry.entry_id, {})
-            pollen_coordinator = supplemental_coordinators.pop(
-                DWD_POLLEN_SOURCE, None
+            supplemental_coordinator = supplemental_coordinators.pop(
+                removed_source, None
             )
-            if pollen_coordinator is not None:
-                await pollen_coordinator.async_shutdown()
+            if supplemental_coordinator is not None:
+                await supplemental_coordinator.async_shutdown()
 
         # 2) Entitäten dieses Geräts direkt entfernen (korrekte Filterung: über config_entry_id & device_id)
         entity_registry = er.async_get(hass)
@@ -461,6 +488,9 @@ async def _async_cleanup_unselected_entities_and_devices(
     selected_supplemental = set()
     if entry.data.get(CONF_INCLUDE_DWD_POLLEN, False):
         selected_supplemental.add(DWD_POLLEN_DEVICE_ID)
+    for station in DWD_PRECIPITATION_STATIONS.values():
+        if entry.data.get(station["config_key"], False):
+            selected_supplemental.add(station["device_id"])
 
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)

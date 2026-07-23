@@ -28,6 +28,12 @@ CONF_SELECTED_DEVICES: Final[str] = "selected_devices"
 CONF_SELECTED_MEDIAN_ENTITIES: Final[str] = "selected_median_entities"
 CONF_DEVICE_METADATA: Final[str] = "device_metadata"
 CONF_INCLUDE_DWD_POLLEN: Final[str] = "include_dwd_pollen"
+CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS: Final[str] = (
+    "include_dwd_precipitation_brandis"
+)
+CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: Final[str] = (
+    "include_dwd_precipitation_belgershain"
+)
 CONF_SENSOR_STATIONS: Final[str] = "sensor_stations"
 CONF_SEARCH_TERM: Final[str] = "search_term"
 CONFIG_ENTRY_VERSION: Final[int] = 2
@@ -39,6 +45,30 @@ DWD_POLLEN_DEVICE_ID: Final[str] = "supplemental:dwd_pollen:81"
 DWD_POLLEN_URL: Final[str] = (
     "https://opendata.dwd.de/climate_environment/health/alerts/s31fg.json"
 )
+DWD_PRECIPITATION_STATIONS: Final[dict[str, dict[str, str]]] = {
+    "07362": {
+        "name": "Brandis",
+        "config_key": CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
+        "source": "dwd_precipitation_07362",
+        "device_id": "supplemental:dwd_precipitation:07362",
+        "url": (
+            "https://opendata.dwd.de/climate_environment/CDC/observations_germany/"
+            "climate/5_minutes/precipitation/now/"
+            "5minutenwerte_nieder_07362_now.zip"
+        ),
+    },
+    "07323": {
+        "name": "Belgershain",
+        "config_key": CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
+        "source": "dwd_precipitation_07323",
+        "device_id": "supplemental:dwd_precipitation:07323",
+        "url": (
+            "https://opendata.dwd.de/climate_environment/CDC/observations_germany/"
+            "climate/5_minutes/precipitation/now/"
+            "5minutenwerte_nieder_07323_now.zip"
+        ),
+    },
+}
 
 # Default Values
 DEFAULT_SCAN_INTERVAL: Final[int] = 30  # Health check interval for MQTT

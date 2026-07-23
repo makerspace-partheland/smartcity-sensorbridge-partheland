@@ -8,6 +8,8 @@ from custom_components.sensorbridge_partheland.api_client import DeviceCatalogEr
 from custom_components.sensorbridge_partheland.const import (
     CONF_DEVICE_METADATA,
     CONF_INCLUDE_DWD_POLLEN,
+    CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
+    CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
     CONF_SEARCH_TERM,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
@@ -342,6 +344,8 @@ async def test_user_flow_create_entry(
     assert result4["data"][CONF_SELECTED_MEDIAN_ENTITIES] == ["median_Naunhof"]
     assert "Naunhof_Nr1" in result4["data"][CONF_DEVICE_METADATA]
     assert result4["data"][CONF_INCLUDE_DWD_POLLEN] is False
+    assert result4["data"][CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS] is False
+    assert result4["data"][CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN] is False
 
 
 async def test_user_flow_adds_dwd_pollen_source(
@@ -413,6 +417,51 @@ async def test_user_flow_requires_a_primary_measurement_source_for_pollen(
     assert result["type"] == FlowResultType.FORM
     assert result["step_id"] == "device_selection"
     assert result["errors"] == {"base": "mindestens_eine_auswahl"}
+
+
+async def test_user_flow_adds_dwd_precipitation_sources(
+    hass: HomeAssistant, mock_config_service, mock_integration_setup
+):
+    """Beide festen öffentlichen DWD-Stationen sind einzeln auswählbar."""
+    mock_integration_setup(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "all_devices"}
+    )
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"stations": ["Naunhof_Nr1"]}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "extras"}
+    )
+
+    schema = {
+        key.schema: key.default()
+        for key in result["data_schema"].schema
+    }
+    assert schema == {
+        CONF_INCLUDE_DWD_POLLEN: False,
+        CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS: False,
+        CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: False,
+    }
+
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_INCLUDE_DWD_POLLEN: False,
+            CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS: True,
+            CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN: True,
+        },
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "finish"}
+    )
+
+    assert result["data"][CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS] is True
+    assert result["data"][CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN] is True
 
 
 async def test_user_flow_accumulates_multiple_searches(
