@@ -27,9 +27,18 @@ CLIENT_ID_PREFIX: Final[str] = "hacs-sc-sensorbridge-"
 CONF_SELECTED_DEVICES: Final[str] = "selected_devices"
 CONF_SELECTED_MEDIAN_ENTITIES: Final[str] = "selected_median_entities"
 CONF_DEVICE_METADATA: Final[str] = "device_metadata"
+CONF_INCLUDE_DWD_POLLEN: Final[str] = "include_dwd_pollen"
 CONF_SENSOR_STATIONS: Final[str] = "sensor_stations"
 CONF_SEARCH_TERM: Final[str] = "search_term"
 CONFIG_ENTRY_VERSION: Final[int] = 2
+
+# Supplemental sources
+SUPPLEMENTAL_COORDINATORS: Final[str] = "supplemental_coordinators"
+DWD_POLLEN_SOURCE: Final[str] = "dwd_pollen"
+DWD_POLLEN_DEVICE_ID: Final[str] = "supplemental:dwd_pollen:81"
+DWD_POLLEN_URL: Final[str] = (
+    "https://opendata.dwd.de/climate_environment/health/alerts/s31fg.json"
+)
 
 # Default Values
 DEFAULT_SCAN_INTERVAL: Final[int] = 30  # Health check interval for MQTT

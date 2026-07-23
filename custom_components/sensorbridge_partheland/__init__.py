@@ -18,10 +18,14 @@ from .config_service import ConfigService
 from .const import (
     CONFIG_ENTRY_VERSION,
     CONF_DEVICE_METADATA,
+    CONF_INCLUDE_DWD_POLLEN,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
     DOMAIN,
+    DWD_POLLEN_DEVICE_ID,
+    DWD_POLLEN_SOURCE,
     PLATFORMS,
+    SUPPLEMENTAL_COORDINATORS,
 )
 from .entity_factory import EntityFactory
 from .error_handler import ErrorHandler
@@ -241,6 +245,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Coordinator starten
         await coordinator.async_config_entry_first_refresh()
 
+        supplemental_by_entry = hass.data[DOMAIN].setdefault(
+            SUPPLEMENTAL_COORDINATORS, {}
+        )
+        supplemental_coordinators = {}
+        if entry.data.get(CONF_INCLUDE_DWD_POLLEN, False):
+            from .pollen import DwdPollenCoordinator
+
+            pollen_coordinator = DwdPollenCoordinator(hass, entry)
+            await pollen_coordinator.async_refresh()
+            supplemental_coordinators[DWD_POLLEN_SOURCE] = pollen_coordinator
+        supplemental_by_entry[entry.entry_id] = supplemental_coordinators
+
         # Plattformen laden (idempotent): Vor erneutem Setup sicherstellen, dass nicht doppelt geladen wird
         try:
             await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -290,6 +306,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("Fehler beim Entladen der Plattformen: %s", e)
 
     # 2) Laufende Tasks/Services herunterfahren
+    try:
+        supplemental_by_entry = hass.data.get(DOMAIN, {}).get(
+            SUPPLEMENTAL_COORDINATORS, {}
+        )
+        supplemental_coordinators = supplemental_by_entry.pop(entry.entry_id, {})
+        for coordinator in supplemental_coordinators.values():
+            await coordinator.async_shutdown()
+        if not supplemental_by_entry:
+            hass.data.get(DOMAIN, {}).pop(SUPPLEMENTAL_COORDINATORS, None)
+    except Exception as e:
+        _LOGGER.debug("Zusatzquellen-Shutdown Warnung: %s", e)
+
     try:
         if entry.entry_id in hass.data.get(DOMAIN, {}):
             coordinator = hass.data[DOMAIN][entry.entry_id]
@@ -344,6 +372,7 @@ async def async_remove_config_entry_device(
 
         data = dict(entry.data)
         changed = False
+        supplemental_removed = False
 
         # Aus ausgewählten Geräten entfernen
         if external_id in data.get(CONF_SELECTED_DEVICES, []):
@@ -357,9 +386,28 @@ async def async_remove_config_entry_device(
             ]
             changed = True
 
+        if (
+            external_id == DWD_POLLEN_DEVICE_ID
+            and data.get(CONF_INCLUDE_DWD_POLLEN, False)
+        ):
+            data[CONF_INCLUDE_DWD_POLLEN] = False
+            changed = True
+            supplemental_removed = True
+
         if changed:
             # 1) Config-Entry aktualisieren (damit Auswahl konsistent ist)
             hass.config_entries.async_update_entry(entry, data=data)
+
+        if supplemental_removed:
+            supplemental_by_entry = hass.data.get(DOMAIN, {}).get(
+                SUPPLEMENTAL_COORDINATORS, {}
+            )
+            supplemental_coordinators = supplemental_by_entry.get(entry.entry_id, {})
+            pollen_coordinator = supplemental_coordinators.pop(
+                DWD_POLLEN_SOURCE, None
+            )
+            if pollen_coordinator is not None:
+                await pollen_coordinator.async_shutdown()
 
         # 2) Entitäten dieses Geräts direkt entfernen (korrekte Filterung: über config_entry_id & device_id)
         entity_registry = er.async_get(hass)
@@ -410,6 +458,9 @@ async def _async_cleanup_unselected_entities_and_devices(
 
     selected_devices = set(entry.data.get("selected_devices", []))
     selected_median = set(entry.data.get("selected_median_entities", []))
+    selected_supplemental = set()
+    if entry.data.get(CONF_INCLUDE_DWD_POLLEN, False):
+        selected_supplemental.add(DWD_POLLEN_DEVICE_ID)
 
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)
@@ -428,7 +479,11 @@ async def _async_cleanup_unselected_entities_and_devices(
             continue
 
         external_id = external_ids[0]
-        is_selected = (external_id in selected_devices) or (external_id in selected_median)
+        is_selected = (
+            (external_id in selected_devices)
+            or (external_id in selected_median)
+            or (external_id in selected_supplemental)
+        )
         if not is_selected:
             entity_registry.async_remove(entity_id)
 

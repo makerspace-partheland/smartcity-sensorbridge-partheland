@@ -33,7 +33,15 @@
         "menu_options": {
           "search": "Search more measurement sources",
           "all_devices": "Show all measurement sources",
+          "extras": "Additional data sources",
           "finish": "Finish selection"
+        }
+      },
+      "extras": {
+        "title": "Additional data sources",
+        "description": "Select optional public data sources for the Partheland region.",
+        "data": {
+          "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)"
         }
       }
     },
@@ -70,7 +78,8 @@
         "description": "Search for specific measurement sources or show all available ones.",
         "menu_options": {
           "search": "Search measurement sources",
-          "all_devices": "Show all measurement sources"
+          "all_devices": "Show all measurement sources",
+          "extras": "Additional data sources"
         }
       },
       "search": {
@@ -96,7 +105,15 @@
         "menu_options": {
           "search": "Search more measurement sources",
           "all_devices": "Show all measurement sources",
+          "extras": "Additional data sources",
           "finish": "Finish selection"
+        }
+      },
+      "extras": {
+        "title": "Additional data sources",
+        "description": "Select optional public data sources for the Partheland region.",
+        "data": {
+          "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)"
         }
       }
     },
@@ -277,6 +294,168 @@
       },
       "leaf_moisture": {
         "name": "Leaf Moisture"
+      },
+      "pollen_hazel": {
+        "name": "Hazel",
+        "state": {
+          "none": "none",
+          "none_to_low": "none to low",
+          "low": "low",
+          "low_to_medium": "low to medium",
+          "medium": "medium",
+          "medium_to_high": "medium to high",
+          "high": "high"
+        },
+        "state_attributes": {
+          "level_raw": {
+            "name": "DWD level today"
+          },
+          "tomorrow": {
+            "name": "DWD level tomorrow"
+          },
+          "day_after_tomorrow": {
+            "name": "DWD level day after tomorrow"
+          },
+          "last_update": {
+            "name": "Forecast issued"
+          },
+          "next_update": {
+            "name": "Next forecast"
+          }
+        }
+      },
+      "pollen_alder": {
+        "name": "Alder",
+        "state": {
+          "none": "none",
+          "none_to_low": "none to low",
+          "low": "low",
+          "low_to_medium": "low to medium",
+          "medium": "medium",
+          "medium_to_high": "medium to high",
+          "high": "high"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD level today"},
+          "tomorrow": {"name": "DWD level tomorrow"},
+          "day_after_tomorrow": {"name": "DWD level day after tomorrow"},
+          "last_update": {"name": "Forecast issued"},
+          "next_update": {"name": "Next forecast"}
+        }
+      },
+      "pollen_ash": {
+        "name": "Ash",
+        "state": {
+          "none": "none",
+          "none_to_low": "none to low",
+          "low": "low",
+          "low_to_medium": "low to medium",
+          "medium": "medium",
+          "medium_to_high": "medium to high",
+          "high": "high"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD level today"},
+          "tomorrow": {"name": "DWD level tomorrow"},
+          "day_after_tomorrow": {"name": "DWD level day after tomorrow"},
+          "last_update": {"name": "Forecast issued"},
+          "next_update": {"name": "Next forecast"}
+        }
+      },
+      "pollen_birch": {
+        "name": "Birch",
+        "state": {
+          "none": "none",
+          "none_to_low": "none to low",
+          "low": "low",
+          "low_to_medium": "low to medium",
+          "medium": "medium",
+          "medium_to_high": "medium to high",
+          "high": "high"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD level today"},
+          "tomorrow": {"name": "DWD level tomorrow"},
+          "day_after_tomorrow": {"name": "DWD level day after tomorrow"},
+          "last_update": {"name": "Forecast issued"},
+          "next_update": {"name": "Next forecast"}
+        }
+      },
+      "pollen_grasses": {
+        "name": "Grasses",
+        "state": {
+          "none": "none",
+          "none_to_low": "none to low",
+          "low": "low",
+          "low_to_medium": "low to medium",
+          "medium": "medium",
+          "medium_to_high": "medium to high",
+          "high": "high"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD level today"},
+          "tomorrow": {"name": "DWD level tomorrow"},
+          "day_after_tomorrow": {"name": "DWD level day after tomorrow"},
+          "last_update": {"name": "Forecast issued"},
+          "next_update": {"name": "Next forecast"}
+        }
+      },
+      "pollen_rye": {
+        "name": "Rye",
+        "state": {
+          "none": "none",
+          "none_to_low": "none to low",
+          "low": "low",
+          "low_to_medium": "low to medium",
+          "medium": "medium",
+          "medium_to_high": "medium to high",
+          "high": "high"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD level today"},
+          "tomorrow": {"name": "DWD level tomorrow"},
+          "day_after_tomorrow": {"name": "DWD level day after tomorrow"},
+          "last_update": {"name": "Forecast issued"},
+          "next_update": {"name": "Next forecast"}
+        }
+      },
+      "pollen_mugwort": {
+        "name": "Mugwort",
+        "state": {
+          "none": "none",
+          "none_to_low": "none to low",
+          "low": "low",
+          "low_to_medium": "low to medium",
+          "medium": "medium",
+          "medium_to_high": "medium to high",
+          "high": "high"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD level today"},
+          "tomorrow": {"name": "DWD level tomorrow"},
+          "day_after_tomorrow": {"name": "DWD level day after tomorrow"},
+          "last_update": {"name": "Forecast issued"},
+          "next_update": {"name": "Next forecast"}
+        }
+      },
+      "pollen_ragweed": {
+        "name": "Ragweed",
+        "state": {
+          "none": "none",
+          "none_to_low": "none to low",
+          "low": "low",
+          "low_to_medium": "low to medium",
+          "medium": "medium",
+          "medium_to_high": "medium to high",
+          "high": "high"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD level today"},
+          "tomorrow": {"name": "DWD level tomorrow"},
+          "day_after_tomorrow": {"name": "DWD level day after tomorrow"},
+          "last_update": {"name": "Forecast issued"},
+          "next_update": {"name": "Next forecast"}
+        }
       }
     },
     "device_categories": {

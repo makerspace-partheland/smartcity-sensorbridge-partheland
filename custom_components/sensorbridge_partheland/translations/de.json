@@ -33,7 +33,15 @@
         "menu_options": {
           "search": "Weitere Messquellen suchen",
           "all_devices": "Alle Messquellen anzeigen",
+          "extras": "Zusätzliche Datenquellen",
           "finish": "Auswahl abschließen"
+        }
+      },
+      "extras": {
+        "title": "Zusätzliche Datenquellen",
+        "description": "Wähle optionale öffentliche Datenquellen für das Partheland aus.",
+        "data": {
+          "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)"
         }
       }
     },
@@ -61,7 +69,8 @@
         "description": "Suche gezielt nach Messquellen oder zeige alle verfügbaren an.",
         "menu_options": {
           "search": "Messquelle suchen",
-          "all_devices": "Alle Messquellen anzeigen"
+          "all_devices": "Alle Messquellen anzeigen",
+          "extras": "Zusätzliche Datenquellen"
         }
       },
       "search": {
@@ -87,7 +96,15 @@
         "menu_options": {
           "search": "Weitere Messquellen suchen",
           "all_devices": "Alle Messquellen anzeigen",
+          "extras": "Zusätzliche Datenquellen",
           "finish": "Auswahl abschließen"
+        }
+      },
+      "extras": {
+        "title": "Zusätzliche Datenquellen",
+        "description": "Wähle optionale öffentliche Datenquellen für das Partheland aus.",
+        "data": {
+          "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)"
         }
       }
     },
@@ -300,6 +317,168 @@
       },
       "leaf_moisture": {
         "name": "Blattfeuchte"
+      },
+      "pollen_hazel": {
+        "name": "Hasel",
+        "state": {
+          "none": "kein",
+          "none_to_low": "kein bis gering",
+          "low": "gering",
+          "low_to_medium": "gering bis mittel",
+          "medium": "mittel",
+          "medium_to_high": "mittel bis hoch",
+          "high": "hoch"
+        },
+        "state_attributes": {
+          "level_raw": {
+            "name": "DWD-Stufe heute"
+          },
+          "tomorrow": {
+            "name": "DWD-Stufe morgen"
+          },
+          "day_after_tomorrow": {
+            "name": "DWD-Stufe übermorgen"
+          },
+          "last_update": {
+            "name": "Stand der Vorhersage"
+          },
+          "next_update": {
+            "name": "Nächste Vorhersage"
+          }
+        }
+      },
+      "pollen_alder": {
+        "name": "Erle",
+        "state": {
+          "none": "kein",
+          "none_to_low": "kein bis gering",
+          "low": "gering",
+          "low_to_medium": "gering bis mittel",
+          "medium": "mittel",
+          "medium_to_high": "mittel bis hoch",
+          "high": "hoch"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD-Stufe heute"},
+          "tomorrow": {"name": "DWD-Stufe morgen"},
+          "day_after_tomorrow": {"name": "DWD-Stufe übermorgen"},
+          "last_update": {"name": "Stand der Vorhersage"},
+          "next_update": {"name": "Nächste Vorhersage"}
+        }
+      },
+      "pollen_ash": {
+        "name": "Esche",
+        "state": {
+          "none": "kein",
+          "none_to_low": "kein bis gering",
+          "low": "gering",
+          "low_to_medium": "gering bis mittel",
+          "medium": "mittel",
+          "medium_to_high": "mittel bis hoch",
+          "high": "hoch"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD-Stufe heute"},
+          "tomorrow": {"name": "DWD-Stufe morgen"},
+          "day_after_tomorrow": {"name": "DWD-Stufe übermorgen"},
+          "last_update": {"name": "Stand der Vorhersage"},
+          "next_update": {"name": "Nächste Vorhersage"}
+        }
+      },
+      "pollen_birch": {
+        "name": "Birke",
+        "state": {
+          "none": "kein",
+          "none_to_low": "kein bis gering",
+          "low": "gering",
+          "low_to_medium": "gering bis mittel",
+          "medium": "mittel",
+          "medium_to_high": "mittel bis hoch",
+          "high": "hoch"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD-Stufe heute"},
+          "tomorrow": {"name": "DWD-Stufe morgen"},
+          "day_after_tomorrow": {"name": "DWD-Stufe übermorgen"},
+          "last_update": {"name": "Stand der Vorhersage"},
+          "next_update": {"name": "Nächste Vorhersage"}
+        }
+      },
+      "pollen_grasses": {
+        "name": "Gräser",
+        "state": {
+          "none": "kein",
+          "none_to_low": "kein bis gering",
+          "low": "gering",
+          "low_to_medium": "gering bis mittel",
+          "medium": "mittel",
+          "medium_to_high": "mittel bis hoch",
+          "high": "hoch"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD-Stufe heute"},
+          "tomorrow": {"name": "DWD-Stufe morgen"},
+          "day_after_tomorrow": {"name": "DWD-Stufe übermorgen"},
+          "last_update": {"name": "Stand der Vorhersage"},
+          "next_update": {"name": "Nächste Vorhersage"}
+        }
+      },
+      "pollen_rye": {
+        "name": "Roggen",
+        "state": {
+          "none": "kein",
+          "none_to_low": "kein bis gering",
+          "low": "gering",
+          "low_to_medium": "gering bis mittel",
+          "medium": "mittel",
+          "medium_to_high": "mittel bis hoch",
+          "high": "hoch"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD-Stufe heute"},
+          "tomorrow": {"name": "DWD-Stufe morgen"},
+          "day_after_tomorrow": {"name": "DWD-Stufe übermorgen"},
+          "last_update": {"name": "Stand der Vorhersage"},
+          "next_update": {"name": "Nächste Vorhersage"}
+        }
+      },
+      "pollen_mugwort": {
+        "name": "Beifuß",
+        "state": {
+          "none": "kein",
+          "none_to_low": "kein bis gering",
+          "low": "gering",
+          "low_to_medium": "gering bis mittel",
+          "medium": "mittel",
+          "medium_to_high": "mittel bis hoch",
+          "high": "hoch"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD-Stufe heute"},
+          "tomorrow": {"name": "DWD-Stufe morgen"},
+          "day_after_tomorrow": {"name": "DWD-Stufe übermorgen"},
+          "last_update": {"name": "Stand der Vorhersage"},
+          "next_update": {"name": "Nächste Vorhersage"}
+        }
+      },
+      "pollen_ragweed": {
+        "name": "Ambrosia",
+        "state": {
+          "none": "kein",
+          "none_to_low": "kein bis gering",
+          "low": "gering",
+          "low_to_medium": "gering bis mittel",
+          "medium": "mittel",
+          "medium_to_high": "mittel bis hoch",
+          "high": "hoch"
+        },
+        "state_attributes": {
+          "level_raw": {"name": "DWD-Stufe heute"},
+          "tomorrow": {"name": "DWD-Stufe morgen"},
+          "day_after_tomorrow": {"name": "DWD-Stufe übermorgen"},
+          "last_update": {"name": "Stand der Vorhersage"},
+          "next_update": {"name": "Nächste Vorhersage"}
+        }
       }
     },
     "device_categories": {

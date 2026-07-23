@@ -8,6 +8,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -21,6 +22,7 @@ from .const import (
     ABORT_ALREADY_CONFIGURED,
     ABORT_NO_DEVICES,
     CONF_DEVICE_METADATA,
+    CONF_INCLUDE_DWD_POLLEN,
     CONF_SEARCH_TERM,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
@@ -53,11 +55,14 @@ class _AccumulatingSelectionFlow:
         self,
         selected_devices: list[str] | None = None,
         selected_medians: list[str] | None = None,
+        include_dwd_pollen: bool = False,
     ) -> None:
         self.devices: dict[str, dict[str, Any]] = {}
         self.median_entities: dict[str, dict[str, Any]] = {}
         self.selected_devices = set(selected_devices or [])
         self.selected_medians = set(selected_medians or [])
+        self.include_dwd_pollen = include_dwd_pollen
+        self.extras_changed = False
         self.visible_devices: set[str] = set()
         self.visible_medians: set[str] = set()
         self.sensor_text = "Sensoren"
@@ -187,16 +192,41 @@ class _AccumulatingSelectionFlow:
     ) -> FlowResult:
         return self._show_selection_menu()
 
+    async def async_step_extras(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        if user_input is not None:
+            self.include_dwd_pollen = bool(
+                user_input.get(CONF_INCLUDE_DWD_POLLEN, False)
+            )
+            self.extras_changed = True
+            return self._show_selection_menu()
+
+        return self.async_show_form(
+            step_id="extras",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_INCLUDE_DWD_POLLEN,
+                        default=self.include_dwd_pollen,
+                    ): BooleanSelector(),
+                }
+            ),
+        )
+
     def _show_start_menu(self) -> FlowResult:
+        menu_options = ["search", "all_devices"]
+        if self._start_step_id == "init":
+            menu_options.append("extras")
         return self.async_show_menu(
             step_id=self._start_step_id,
-            menu_options=["search", "all_devices"],
+            menu_options=menu_options,
         )
 
     def _show_selection_menu(self) -> FlowResult:
         return self.async_show_menu(
             step_id="selection_menu",
-            menu_options=["search", "all_devices", "finish"],
+            menu_options=["search", "all_devices", "extras", "finish"],
             description_placeholders={
                 "device_count": str(len(self.selected_devices)),
                 "median_count": str(len(self.selected_medians)),
@@ -334,6 +364,7 @@ class ConfigFlow(
                 CONF_SELECTED_DEVICES: selected_devices,
                 CONF_SELECTED_MEDIAN_ENTITIES: sorted(self.selected_medians),
                 CONF_DEVICE_METADATA: metadata,
+                CONF_INCLUDE_DWD_POLLEN: self.include_dwd_pollen,
             },
         )
 
@@ -367,7 +398,11 @@ class OptionsFlowHandler(
         current_medians = list(
             self.config_entry.data.get(CONF_SELECTED_MEDIAN_ENTITIES, [])
         )
-        self._init_selection_state(current_devices, current_medians)
+        self._init_selection_state(
+            current_devices,
+            current_medians,
+            bool(self.config_entry.data.get(CONF_INCLUDE_DWD_POLLEN, False)),
+        )
         await self._async_initialize_config_service()
         assert self.config_service is not None
         self.config_service.register_entry_data(dict(self.config_entry.data))
@@ -411,6 +446,8 @@ class OptionsFlowHandler(
             CONF_SELECTED_MEDIAN_ENTITIES: sorted(self.selected_medians),
             CONF_DEVICE_METADATA: metadata,
         }
+        if self.extras_changed or CONF_INCLUDE_DWD_POLLEN in self.config_entry.data:
+            new_data[CONF_INCLUDE_DWD_POLLEN] = self.include_dwd_pollen
         self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
         await self.hass.config_entries.async_reload(self.config_entry.entry_id)
         return self.async_create_entry(title="", data={})

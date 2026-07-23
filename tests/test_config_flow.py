@@ -7,6 +7,7 @@ from homeassistant.setup import async_setup_component
 from custom_components.sensorbridge_partheland.api_client import DeviceCatalogError
 from custom_components.sensorbridge_partheland.const import (
     CONF_DEVICE_METADATA,
+    CONF_INCLUDE_DWD_POLLEN,
     CONF_SEARCH_TERM,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
@@ -340,6 +341,78 @@ async def test_user_flow_create_entry(
     assert result4["data"][CONF_SELECTED_DEVICES] == ["Naunhof_Nr1"]
     assert result4["data"][CONF_SELECTED_MEDIAN_ENTITIES] == ["median_Naunhof"]
     assert "Naunhof_Nr1" in result4["data"][CONF_DEVICE_METADATA]
+    assert result4["data"][CONF_INCLUDE_DWD_POLLEN] is False
+
+
+async def test_user_flow_adds_dwd_pollen_source(
+    hass: HomeAssistant, mock_config_service, mock_integration_setup
+):
+    """Die optionale DWD-Quelle wird erst nach ausdrücklicher Auswahl gespeichert."""
+    mock_integration_setup(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "all_devices"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"stations": ["Naunhof_Nr1"]}
+    )
+    assert result["menu_options"] == [
+        "search",
+        "all_devices",
+        "extras",
+        "finish",
+    ]
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "extras"}
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "extras"
+    schema_key = next(iter(result["data_schema"].schema))
+    assert schema_key.schema == CONF_INCLUDE_DWD_POLLEN
+    assert schema_key.default() is False
+
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_INCLUDE_DWD_POLLEN: True}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "finish"}
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_INCLUDE_DWD_POLLEN] is True
+    assert result["data"][CONF_SELECTED_DEVICES] == ["Naunhof_Nr1"]
+
+
+async def test_user_flow_requires_a_primary_measurement_source_for_pollen(
+    hass: HomeAssistant, mock_config_service, mock_integration_setup
+):
+    """Pollen bleibt bis zum Coordinator-Umbau eine echte Zusatzquelle."""
+    mock_integration_setup(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "all_devices"}
+    )
+    await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "extras"}
+    )
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_INCLUDE_DWD_POLLEN: True}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "finish"}
+    )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "device_selection"
+    assert result["errors"] == {"base": "mindestens_eine_auswahl"}
 
 
 async def test_user_flow_accumulates_multiple_searches(
@@ -551,6 +624,56 @@ async def test_options_flow_sync_entry(
     assert updated.data[CONF_SELECTED_DEVICES] == ["Naunhof_Nr1", "Naunhof_Nr2"]
     assert updated.data[CONF_SELECTED_MEDIAN_ENTITIES] == []
     assert set(updated.data[CONF_DEVICE_METADATA]) == {"Naunhof_Nr1", "Naunhof_Nr2"}
+
+
+async def test_options_flow_adds_pollen_without_changing_existing_selection(
+    hass: HomeAssistant, mock_config_service, mock_integration_setup
+):
+    """Ein Alt-Eintrag behält seine Auswahl und startet mit deaktivierter Quelle."""
+    mock_integration_setup(hass)
+
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    original_metadata = {
+        "Naunhof_Nr1": {
+            "id": "Naunhof_Nr1",
+            "name": "Station Naunhof Nr 1",
+            "type": "senseBox",
+            "sensors": ["temperature", "humidity"],
+        }
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=NAME,
+        data={
+            CONF_SELECTED_DEVICES: ["Naunhof_Nr1"],
+            CONF_SELECTED_MEDIAN_ENTITIES: [],
+            CONF_DEVICE_METADATA: original_metadata,
+        },
+        entry_id="pollen-options",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["menu_options"] == ["search", "all_devices", "extras"]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "extras"}
+    )
+    schema_key = next(iter(result["data_schema"].schema))
+    assert schema_key.default() is False
+
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_INCLUDE_DWD_POLLEN: True}
+    )
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "finish"}
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    updated = hass.config_entries.async_get_entry(entry.entry_id)
+    assert updated.data[CONF_SELECTED_DEVICES] == ["Naunhof_Nr1"]
+    assert updated.data[CONF_SELECTED_MEDIAN_ENTITIES] == []
+    assert updated.data[CONF_INCLUDE_DWD_POLLEN] is True
 
 
 async def test_http_config_flow_happy_path(

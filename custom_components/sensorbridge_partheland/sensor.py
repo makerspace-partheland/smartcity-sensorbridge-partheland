@@ -25,7 +25,12 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.util import slugify
 from homeassistant.helpers.entity import async_generate_entity_id
 
-from .const import DOMAIN, MANUFACTURER
+from .const import (
+    DOMAIN,
+    DWD_POLLEN_SOURCE,
+    MANUFACTURER,
+    SUPPLEMENTAL_COORDINATORS,
+)
 from .coordinator import SensorBridgeCoordinator
 from .interfaces import ConfigServiceProtocol
 
@@ -67,6 +72,17 @@ async def async_setup_entry(
                 coordinator, median_id, config_service
             )
             entities.extend(median_entities)
+
+        supplemental_coordinators = (
+            hass.data[DOMAIN]
+            .get(SUPPLEMENTAL_COORDINATORS, {})
+            .get(entry.entry_id, {})
+        )
+        pollen_coordinator = supplemental_coordinators.get(DWD_POLLEN_SOURCE)
+        if pollen_coordinator is not None:
+            from .pollen import create_pollen_entities
+
+            entities.extend(create_pollen_entities(pollen_coordinator))
 
         _LOGGER.info("Created %d sensor entities", len(entities))
         async_add_entities(entities)
