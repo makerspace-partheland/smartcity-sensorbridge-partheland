@@ -180,6 +180,28 @@ def test_selection_filter_uses_raw_operationalstatus_and_recent_last_seen():
     ]
 
 
+def test_selection_filter_excludes_new_offline_device():
+    now = datetime(2026, 7, 22, 15, 0, tzinfo=UTC)
+    devices = [
+        {
+            "id": "online",
+            "status": "online",
+            "last_seen": "2026-07-20T00:00:00Z",
+            "operationalstatus": None,
+        },
+        {
+            "id": "offline",
+            "status": "offline",
+            "last_seen": "2026-07-20T00:00:00Z",
+            "operationalstatus": None,
+        },
+    ]
+
+    candidates = filter_selection_candidates(devices, now_utc=now)
+
+    assert [device["id"] for device in candidates] == ["online"]
+
+
 def test_selection_filter_preserves_existing_ids_without_exposing_them_as_new():
     now = datetime(2026, 7, 22, 15, 0, tzinfo=UTC)
     devices = [
@@ -198,11 +220,17 @@ def test_selection_filter_preserves_existing_ids_without_exposing_them_as_new():
             "last_seen": "2026-07-20T00:00:00Z",
             "operationalstatus": "defective",
         },
+        {
+            "id": "offline",
+            "status": "offline",
+            "last_seen": "2026-07-20T00:00:00Z",
+            "operationalstatus": None,
+        },
     ]
 
     candidates = filter_selection_candidates(
         devices,
-        existing_ids={"planned", "missing_last_seen", "defective"},
+        existing_ids={"planned", "missing_last_seen", "defective", "offline"},
         now_utc=now,
     )
 
@@ -210,4 +238,5 @@ def test_selection_filter_preserves_existing_ids_without_exposing_them_as_new():
         "planned",
         "missing_last_seen",
         "defective",
+        "offline",
     ]

@@ -4,7 +4,6 @@
     "step": {
       "user": {
         "title": "Select measurement sources",
-        "description": "Search for specific measurement sources or show all available ones.",
         "menu_options": {
           "search": "Search measurement sources",
           "all_devices": "Show all measurement sources"
@@ -12,29 +11,30 @@
       },
       "search": {
         "title": "Search measurement sources",
-        "description": "Search by place, station name, measurement ID, or device type.",
+        "description": "Search by place, name, ID, or type. Currently selected: {selected_count}.",
         "data": {
           "search_term": "Search term"
         }
       },
       "device_selection": {
         "title": "Select measurement sources",
-        "description": "{result_count} results. Previously selected measurement sources outside this view remain selected. Total selected: {selected_count}.",
+        "description": "{result_count} measurement sources · {selected_count} selected. Selections outside this list remain selected.",
         "data": {
           "stations": "senseBox",
           "water_level": "Water level",
           "temperature_moisture": "Temperature and moisture",
+          "other": "Other measurement sources",
           "selected_median_entities": "Medians"
         }
       },
       "selection_menu": {
         "title": "Add more or finish",
-        "description": "Selected: {device_count} direct measurement sources and {median_count} medians.",
+        "description": "Selected: {device_count} direct measurement sources, {median_count} medians, and {extra_count} additional data sources.",
         "menu_options": {
           "search": "Search more measurement sources",
           "all_devices": "Show all measurement sources",
           "extras": "Additional data sources",
-          "finish": "Finish selection"
+          "finish": "Finish setup"
         }
       },
       "extras": {
@@ -54,7 +54,7 @@
       }
     },
     "error": {
-      "cannot_connect": "The device catalog could not be loaded",
+      "cannot_connect": "The measurement source catalog could not be loaded",
       "keine_treffer": "No matching measurement sources found",
       "unknown": "Unexpected error",
       "mindestens_eine_auswahl": "Please select at least one measurement source",
@@ -62,10 +62,11 @@
     },
     "abort": {
       "already_configured": "Integration is already configured",
-      "no_devices_available": "No devices available",
-      "single_instance_allowed": "Only one instance of the integration allowed. Use 'Configure' to add more devices."
+      "no_devices_available": "No measurement sources available",
+      "single_instance_allowed": "Only one instance of the integration is allowed. Use 'Configure' to add more measurement sources."
     },
     "ui_text": {
+      "sensor": "Sensor",
       "sensors": "Sensors",
       "sensor_count": "Sensors"
     },
@@ -83,7 +84,6 @@
     "step": {
       "init": {
         "title": "Manage measurement sources",
-        "description": "Search for specific measurement sources or show all available ones.",
         "menu_options": {
           "search": "Search measurement sources",
           "all_devices": "Show all measurement sources",
@@ -92,29 +92,30 @@
       },
       "search": {
         "title": "Search measurement sources",
-        "description": "Search by place, station name, measurement ID, or device type.",
+        "description": "Search by place, name, ID, or type. Currently selected: {selected_count}.",
         "data": {
           "search_term": "Search term"
         }
       },
       "device_selection": {
         "title": "Select measurement sources",
-        "description": "{result_count} results. Previously selected measurement sources outside this view remain selected. Total selected: {selected_count}.",
+        "description": "{result_count} measurement sources · {selected_count} selected. Selections outside this list remain selected.",
         "data": {
           "stations": "senseBox",
           "water_level": "Water level",
           "temperature_moisture": "Temperature and moisture",
+          "other": "Other measurement sources",
           "selected_median_entities": "Medians"
         }
       },
       "selection_menu": {
         "title": "Add more or finish",
-        "description": "Selected: {device_count} direct measurement sources and {median_count} medians.",
+        "description": "Not saved yet. Selected: {device_count} direct measurement sources, {median_count} medians, and {extra_count} additional data sources.",
         "menu_options": {
           "search": "Search more measurement sources",
           "all_devices": "Show all measurement sources",
           "extras": "Additional data sources",
-          "finish": "Finish selection"
+          "finish": "Save changes"
         }
       },
       "extras": {
@@ -134,7 +135,7 @@
       }
     },
     "error": {
-      "cannot_connect": "Error loading configuration",
+      "cannot_connect": "The measurement source catalog could not be loaded",
       "keine_treffer": "No matching measurement sources found",
       "mindestens_eine_auswahl": "Please select at least one measurement source",
       "validierungsfehler": "Error validating selection"

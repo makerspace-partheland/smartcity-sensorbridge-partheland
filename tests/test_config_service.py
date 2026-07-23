@@ -92,6 +92,56 @@ async def test_entry_snapshot_supplies_sensors_when_live_measurements_are_empty(
     assert device["sensor_metadata"] == {"temperature": {"unit": "CEL"}}
 
 
+async def test_existing_offline_candidates_keep_stored_sensor_lists(hass):
+    service = ConfigService(hass)
+    stored_sensors = {
+        "offline_eight": [f"sensor_{index}" for index in range(8)],
+        "offline_twelve": [f"sensor_{index}" for index in range(12)],
+    }
+    service.register_entry_data(
+        {
+            "device_metadata": {
+                device_id: {
+                    "id": device_id,
+                    "name": device_id.replace("_", " ").title(),
+                    "type": "senseBox",
+                    "status": "online",
+                    "sensors": sensors,
+                    "sensor_metadata": {
+                        sensor: {"unit": "unit"} for sensor in sensors
+                    },
+                    "topic_pattern": f"senseBox:home/{device_id}",
+                }
+                for device_id, sensors in stored_sensors.items()
+            }
+        }
+    )
+    service._catalog = [
+        {
+            "id": device_id,
+            "name": device_id.replace("_", " ").title(),
+            "type": "senseBox",
+            "status": "offline",
+            "last_seen": "2026-07-20T00:00:00Z",
+            "operationalstatus": None,
+            "sensors": [],
+            "sensor_metadata": {},
+            "topic_pattern": f"senseBox:home/{device_id}",
+        }
+        for device_id in stored_sensors
+    ]
+
+    grouped = await service.get_selection_candidates(stored_sensors)
+    candidates = {device["id"]: device for device in grouped["senseBox"]}
+    snapshot = await service.snapshot_devices(stored_sensors)
+
+    assert candidates["offline_eight"]["status"] == "offline"
+    assert len(candidates["offline_eight"]["sensors"]) == 8
+    assert len(candidates["offline_twelve"]["sensors"]) == 12
+    assert snapshot["offline_eight"]["sensors"] == stored_sensors["offline_eight"]
+    assert snapshot["offline_twelve"]["sensors"] == stored_sensors["offline_twelve"]
+
+
 async def test_mqtt_field_aliases_use_api_sensor_names(hass):
     service = ConfigService(hass)
 

@@ -40,9 +40,10 @@ from .const import (
 _CONF_STATIONS = "stations"
 _CONF_WATER_LEVEL = "water_level"
 _CONF_TEMPERATURE_MOISTURE = "temperature_moisture"
+_CONF_OTHER = "other"
 
 _DEVICE_FIELDS = {
-    _CONF_STATIONS: {"senseBox", "Unknown"},
+    _CONF_STATIONS: {"senseBox"},
     _CONF_WATER_LEVEL: {"WaterLevel"},
     _CONF_TEMPERATURE_MOISTURE: {"Temperature", "Moisture"},
 }
@@ -76,12 +77,14 @@ class _AccumulatingSelectionFlow:
         self.extras_changed = False
         self.visible_devices: set[str] = set()
         self.visible_medians: set[str] = set()
-        self.sensor_text = "Sensoren"
+        self.sensor_singular_text = "Sensor"
+        self.sensor_plural_text = "Sensoren"
 
     async def _load_devices(self, existing_ids: list[str] | None = None) -> None:
         assert self.config_service is not None
         ui_text = await self.config_service.get_ui_text()
-        self.sensor_text = ui_text.get("sensors", "Sensoren")
+        self.sensor_singular_text = ui_text.get("sensor", "Sensor")
+        self.sensor_plural_text = ui_text.get("sensors", "Sensoren")
         self.devices.clear()
         self.median_entities.clear()
 
@@ -187,7 +190,7 @@ class _AccumulatingSelectionFlow:
         }
         self.selected_devices.difference_update(other_visible)
         self.selected_devices.update(
-            set(user_input.get(_CONF_STATIONS, [])) & other_visible
+            set(user_input.get(_CONF_OTHER, [])) & other_visible
         )
 
         selected_medians = (
@@ -262,6 +265,16 @@ class _AccumulatingSelectionFlow:
             description_placeholders={
                 "device_count": str(len(self.selected_devices)),
                 "median_count": str(len(self.selected_medians)),
+                "extra_count": str(
+                    sum(
+                        (
+                            self.include_dwd_pollen,
+                            self.include_dwd_precipitation_brandis,
+                            self.include_dwd_precipitation_belgershain,
+                            self.include_geobox_brandis,
+                        )
+                    )
+                ),
             },
         )
 
@@ -270,6 +283,11 @@ class _AccumulatingSelectionFlow:
             step_id="search",
             data_schema=vol.Schema({vol.Required(CONF_SEARCH_TERM): TextSelector()}),
             errors=errors,
+            description_placeholders={
+                "selected_count": str(
+                    len(self.selected_devices) + len(self.selected_medians)
+                )
+            },
         )
 
     def _show_device_selection_form(
@@ -288,24 +306,37 @@ class _AccumulatingSelectionFlow:
                 for device_id in self.visible_devices
                 if str(self.devices[device_id].get("type", "Unknown")) in device_types
             }
-            if field == _CONF_STATIONS:
-                options.update(
-                    {
-                        device_id: self.devices[device_id]
-                        for device_id in self.visible_devices
-                        if not any(
-                            str(self.devices[device_id].get("type", "Unknown")) in types
-                            for types in _DEVICE_FIELDS.values()
-                        )
-                    }
-                )
             if options:
                 fields[
                     vol.Optional(
                         field,
                         default=sorted(self.selected_devices & set(options)),
                     )
-                ] = _multi_select(options, self.sensor_text)
+                ] = _multi_select(
+                    options,
+                    self.sensor_singular_text,
+                    self.sensor_plural_text,
+                )
+
+        other_options = {
+            device_id: self.devices[device_id]
+            for device_id in self.visible_devices
+            if not any(
+                str(self.devices[device_id].get("type", "Unknown")) in types
+                for types in _DEVICE_FIELDS.values()
+            )
+        }
+        if other_options:
+            fields[
+                vol.Optional(
+                    _CONF_OTHER,
+                    default=sorted(self.selected_devices & set(other_options)),
+                )
+            ] = _multi_select(
+                other_options,
+                self.sensor_singular_text,
+                self.sensor_plural_text,
+            )
 
         if self.visible_medians:
             medians = {
@@ -317,7 +348,11 @@ class _AccumulatingSelectionFlow:
                     CONF_SELECTED_MEDIAN_ENTITIES,
                     default=sorted(self.selected_medians & self.visible_medians),
                 )
-            ] = _multi_select(medians, self.sensor_text)
+            ] = _multi_select(
+                medians,
+                self.sensor_singular_text,
+                self.sensor_plural_text,
+            )
 
         return self.async_show_form(
             step_id="device_selection",
@@ -537,14 +572,20 @@ def _matches_query(item: dict[str, Any], query: str) -> bool:
 
 
 def _multi_select(
-    options: dict[str, dict[str, Any]], sensor_text: str
+    options: dict[str, dict[str, Any]],
+    sensor_singular_text: str,
+    sensor_plural_text: str,
 ) -> SelectSelector:
     return SelectSelector(
         SelectSelectorConfig(
             options=[
                 SelectOptionDict(
                     value=device_id,
-                    label=_option_label(device, sensor_text),
+                    label=_option_label(
+                        device,
+                        sensor_singular_text,
+                        sensor_plural_text,
+                    ),
                 )
                 for device_id, device in sorted(
                     options.items(),
@@ -561,8 +602,33 @@ def _multi_select(
     )
 
 
-def _option_label(item: dict[str, Any], sensor_text: str) -> str:
+def _option_label(
+    item: dict[str, Any],
+    sensor_singular_text: str,
+    sensor_plural_text: str,
+) -> str:
     item_id = str(item.get("id", ""))
     name = str(item.get("name") or item_id)
-    identity = name if name == item_id else f"{name} · {item_id}"
-    return f"{identity} ({len(item.get('sensors', []))} {sensor_text})"
+    display_id = _wrap_identifier(item_id)
+    identity = display_id if name == item_id else f"{name} · {display_id}"
+    sensor_count = len(item.get("sensors", []))
+    sensor_text = (
+        sensor_singular_text if sensor_count == 1 else sensor_plural_text
+    )
+    return f"{identity} ({sensor_count} {sensor_text})"
+
+
+def _wrap_identifier(identifier: str) -> str:
+    wrapped: list[str] = []
+    uninterrupted = 0
+    for index, character in enumerate(identifier):
+        wrapped.append(character)
+        if character in "-_":
+            wrapped.append("\u200b")
+            uninterrupted = 0
+        else:
+            uninterrupted += 1
+            if uninterrupted == 12 and index < len(identifier) - 1:
+                wrapped.append("\u200b")
+                uninterrupted = 0
+    return "".join(wrapped)

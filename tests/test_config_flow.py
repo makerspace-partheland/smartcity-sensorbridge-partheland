@@ -5,6 +5,7 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.setup import async_setup_component
 
 from custom_components.sensorbridge_partheland.api_client import DeviceCatalogError
+from custom_components.sensorbridge_partheland.config_flow import _option_label
 from custom_components.sensorbridge_partheland.const import (
     CONF_DEVICE_METADATA,
     CONF_INCLUDE_DWD_POLLEN,
@@ -155,7 +156,10 @@ def mock_config_service(mocker):
     }
     service.register_entry_data = mocker.Mock()
     service.get_device_categories.return_value = {"sensebox": "SenseBox"}
-    service.get_ui_text.return_value = {"sensors": "Sensoren"}
+    service.get_ui_text.return_value = {
+        "sensor": "Sensor",
+        "sensors": "Sensoren",
+    }
     service.get_median_entities.return_value = [
         {
             "id": "median_Naunhof",
@@ -325,6 +329,11 @@ async def test_user_flow_create_entry(
     )
     assert result3["type"] == FlowResultType.MENU
     assert result3["step_id"] == "selection_menu"
+    assert result3["description_placeholders"] == {
+        "device_count": "1",
+        "median_count": "1",
+        "extra_count": "0",
+    }
 
     result4 = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -372,9 +381,10 @@ async def test_user_flow_adds_dwd_pollen_source(
     assert schema_key.schema == CONF_INCLUDE_DWD_POLLEN
     assert schema_key.default() is False
 
-    await hass.config_entries.flow.async_configure(
+    result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_INCLUDE_DWD_POLLEN: True}
     )
+    assert result["description_placeholders"]["extra_count"] == "1"
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "finish"}
     )
@@ -469,9 +479,10 @@ async def test_user_flow_accumulates_multiple_searches(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    await hass.config_entries.flow.async_configure(
+    search = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "search"}
     )
+    assert search["description_placeholders"]["selected_count"] == "0"
     first = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_SEARCH_TERM: "Nr 1"}
     )
@@ -480,9 +491,10 @@ async def test_user_flow_accumulates_multiple_searches(
         result["flow_id"], {"stations": ["Naunhof_Nr1"]}
     )
 
-    await hass.config_entries.flow.async_configure(
+    search = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"next_step_id": "search"}
     )
+    assert search["description_placeholders"]["selected_count"] == "1"
     second = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_SEARCH_TERM: "Naunhof_Nr2"}
     )
@@ -622,6 +634,56 @@ async def test_user_flow_selects_all_device_categories(
     mock_config_service.snapshot_devices.assert_awaited_once_with(
         result["data"][CONF_SELECTED_DEVICES]
     )
+
+
+async def test_user_flow_groups_unknown_types_as_other_measurement_sources(
+    hass: HomeAssistant, mock_config_service, mock_integration_setup
+):
+    mock_integration_setup(hass)
+    mock_config_service.get_selection_candidates.return_value["Unknown"] = [
+        {
+            "id": "unknown_measurement_source",
+            "name": "Unbekannte Messquelle",
+            "type": "Unknown",
+            "sensors": ["temperature"],
+        }
+    ]
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "all_devices"}
+    )
+    schema_fields = {
+        key.schema: selector for key, selector in result["data_schema"].schema.items()
+    }
+
+    assert "other" in schema_fields
+    station_values = {
+        option["value"] for option in schema_fields["stations"].config["options"]
+    }
+    other_values = {
+        option["value"] for option in schema_fields["other"].config["options"]
+    }
+    assert "unknown_measurement_source" not in station_values
+    assert other_values == {"unknown_measurement_source"}
+
+
+def test_option_labels_wrap_ids_and_use_singular_sensor_text():
+    item_id = "uninterruptedidentifier123456789"
+    label = _option_label(
+        {
+            "id": item_id,
+            "name": item_id,
+            "sensors": ["temperature"],
+        },
+        "Sensor",
+        "Sensoren",
+    )
+
+    assert "\u200b" in label
+    assert label.replace("\u200b", "") == f"{item_id} (1 Sensor)"
 
 
 async def test_options_flow_sync_entry(
@@ -1011,6 +1073,157 @@ async def test_options_flow_keeps_filtered_existing_device(
     mock_config_service.get_selection_candidates.assert_awaited_with(
         ["planned_existing"]
     )
+
+
+async def test_options_flow_existing_offline_uses_stored_sensor_counts(
+    hass: HomeAssistant,
+    mock_integration_setup,
+    mocker,
+):
+    mock_integration_setup(hass)
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.sensorbridge_partheland.config_service import ConfigService
+
+    expected_sensors = {
+        "offline_eight": [f"sensor_{index}" for index in range(8)],
+        "offline_twelve": [f"sensor_{index}" for index in range(12)],
+    }
+    expected_sensor_metadata = {
+        device_id: {
+            sensor: {"unit": f"unit_{index}"}
+            for index, sensor in enumerate(sensors)
+        }
+        for device_id, sensors in expected_sensors.items()
+    }
+    stored_metadata = {
+        "offline_eight": {
+            "id": "offline_eight",
+            "name": "Offline Station Acht",
+            "type": "senseBox",
+            "status": "offline",
+            "sensors": list(expected_sensors["offline_eight"]),
+            "sensor_metadata": {
+                sensor: dict(metadata)
+                for sensor, metadata in expected_sensor_metadata[
+                    "offline_eight"
+                ].items()
+            },
+            "topic_pattern": "senseBox:home/offline_eight",
+        },
+        "offline_twelve": {
+            "id": "offline_twelve",
+            "name": "Offline Station Zwölf",
+            "type": "senseBox",
+            "status": "offline",
+            "sensors": list(expected_sensors["offline_twelve"]),
+            "sensor_metadata": {
+                sensor: dict(metadata)
+                for sensor, metadata in expected_sensor_metadata[
+                    "offline_twelve"
+                ].items()
+            },
+            "topic_pattern": "senseBox:home/offline_twelve",
+        },
+    }
+    live_catalog = [
+        {
+            "id": device_id,
+            "name": metadata["name"],
+            "type": "senseBox",
+            "status": "offline",
+            "last_seen": "2026-07-20T00:00:00Z",
+            "operationalstatus": None,
+            "sensors": [],
+            "sensor_metadata": {},
+            "topic_pattern": f"senseBox:home/{device_id}",
+        }
+        for device_id, metadata in stored_metadata.items()
+    ]
+    real_config_service = ConfigService(hass)
+    real_config_service._catalog = live_catalog
+    real_config_service.get_ui_text = mocker.AsyncMock(
+        return_value={"sensor": "Sensor", "sensors": "Sensoren"}
+    )
+    real_config_service.get_median_entities = mocker.AsyncMock(return_value=[])
+
+    async def initialize_real_config_service(flow):
+        flow.config_service = real_config_service
+
+    mocker.patch(
+        "custom_components.sensorbridge_partheland.config_flow."
+        "OptionsFlowHandler._async_initialize_config_service",
+        new=initialize_real_config_service,
+    )
+    hass.data[DOMAIN]["config_service"] = real_config_service
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=NAME,
+        data={
+            CONF_SELECTED_DEVICES: list(stored_metadata),
+            CONF_SELECTED_MEDIAN_ENTITIES: [],
+            CONF_DEVICE_METADATA: {
+                device_id: {
+                    **metadata,
+                    "sensors": list(metadata["sensors"]),
+                    "sensor_metadata": {
+                        sensor: dict(sensor_metadata)
+                        for sensor, sensor_metadata in metadata[
+                            "sensor_metadata"
+                        ].items()
+                    },
+                }
+                for device_id, metadata in stored_metadata.items()
+            },
+        },
+        entry_id="offline-sensor-count-entry",
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "all_devices"}
+    )
+    station_key, station_selector = next(
+        (key, selector)
+        for key, selector in result["data_schema"].schema.items()
+        if key.schema == "stations"
+    )
+    labels = {
+        option["value"]: option["label"]
+        for option in station_selector.config["options"]
+    }
+
+    assert set(labels) == set(stored_metadata)
+    assert station_key.default() == sorted(stored_metadata)
+    assert labels["offline_eight"].endswith("(8 Sensoren)")
+    assert labels["offline_twelve"].endswith("(12 Sensoren)")
+    assert all("(0 Sensoren)" not in label for label in labels.values())
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"stations": list(stored_metadata)}
+    )
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "finish"}
+    )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert entry.data[CONF_SELECTED_DEVICES] == sorted(stored_metadata)
+    for device_id in expected_sensors:
+        assert entry.data[CONF_DEVICE_METADATA][device_id]["sensors"] == (
+            expected_sensors[device_id]
+        )
+        assert entry.data[CONF_DEVICE_METADATA][device_id]["sensor_metadata"] == (
+            expected_sensor_metadata[device_id]
+        )
+        assert entry.data[CONF_DEVICE_METADATA][device_id]["status"] == "offline"
+        assert entry.data[CONF_DEVICE_METADATA][device_id]["topic_pattern"] == (
+            f"senseBox:home/{device_id}"
+        )
+        assert real_config_service._entry_device_metadata[device_id]["sensors"] == (
+            expected_sensors[device_id]
+        )
+    hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
 
 
 async def test_options_flow_removes_only_intentionally_deselected_device(

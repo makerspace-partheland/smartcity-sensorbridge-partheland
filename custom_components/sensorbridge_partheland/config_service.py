@@ -112,6 +112,12 @@ class ConfigService(ConfigServiceProtocol):
         existing = set(existing_ids)
         catalog = await self.async_get_catalog()
         candidates = filter_selection_candidates(catalog, existing)
+        candidates = [
+            self._with_stored_sensor_data(device)
+            if device.get("id") in existing
+            else device
+            for device in candidates
+        ]
         present_ids = {device["id"] for device in candidates}
 
         for device_id in existing - present_ids:
@@ -338,14 +344,7 @@ class ConfigService(ConfigServiceProtocol):
         for live_device in catalog:
             if live_device.get("id") != device_id:
                 continue
-            device = dict(live_device)
-            stored = self._entry_device_metadata.get(device_id, {})
-            live_sensors = device.get("sensors", [])
-            stored_sensors = stored.get("sensors", [])
-            if not live_sensors and isinstance(stored_sensors, list):
-                device["sensors"] = list(stored_sensors)
-                device["sensor_metadata"] = dict(stored.get("sensor_metadata", {}))
-            return device
+            return self._with_stored_sensor_data(live_device)
 
         stored = self._entry_device_metadata.get(device_id)
         if stored:
@@ -361,6 +360,20 @@ class ConfigService(ConfigServiceProtocol):
                 }
 
         return None
+
+    def _with_stored_sensor_data(self, device: Dict[str, Any]) -> Dict[str, Any]:
+        merged = dict(device)
+        device_id = merged.get("id")
+        stored = (
+            self._entry_device_metadata.get(device_id, {})
+            if isinstance(device_id, str)
+            else {}
+        )
+        stored_sensors = stored.get("sensors", [])
+        if not merged.get("sensors") and isinstance(stored_sensors, list):
+            merged["sensors"] = list(stored_sensors)
+            merged["sensor_metadata"] = dict(stored.get("sensor_metadata", {}))
+        return merged
     
     async def get_median_by_id(self, median_id: str) -> Optional[Dict[str, Any]]:
         """Gibt eine spezifische Median-Entity nach ID zurück."""

@@ -16,6 +16,7 @@ DEVICE_TYPE_MAP = {
     "MoistureDevice": "Moisture",
 }
 UNSELECTABLE_OPERATIONAL_STATUSES = {"planned", "defective"}
+UNSELECTABLE_STATUSES = {"offline"}
 
 
 class DeviceCatalogError(RuntimeError):
@@ -169,6 +170,8 @@ def filter_selection_candidates(
             continue
 
         if device.get("operationalstatus") in UNSELECTABLE_OPERATIONAL_STATUSES:
+            continue
+        if device.get("status") in UNSELECTABLE_STATUSES:
             continue
 
         last_seen = _parse_last_seen(device.get("last_seen"))
