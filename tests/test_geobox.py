@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,7 +19,6 @@ from custom_components.sensorbridge_partheland.const import (
     DOMAIN,
     GEOBOX_BRANDIS_DEVICE_ID,
     GEOBOX_BRANDIS_SOURCE,
-    SUPPLEMENTAL_COORDINATORS,
 )
 from custom_components.sensorbridge_partheland.geobox import (
     GeoBoxBrandisCoordinator,
@@ -256,14 +256,12 @@ async def test_removing_geobox_device_disables_and_stops_only_source(hass):
     entry.add_to_hass(hass)
     coordinator = AsyncMock()
     other_coordinator = AsyncMock()
-    hass.data[DOMAIN] = {
-        SUPPLEMENTAL_COORDINATORS: {
-            entry.entry_id: {
-                GEOBOX_BRANDIS_SOURCE: coordinator,
-                "dwd_pollen": other_coordinator,
-            }
+    entry.runtime_data = SimpleNamespace(
+        supplemental_coordinators={
+            GEOBOX_BRANDIS_SOURCE: coordinator,
+            "dwd_pollen": other_coordinator,
         }
-    }
+    )
 
     device_registry = dr.async_get(hass)
     device = device_registry.async_get_or_create(
@@ -288,6 +286,6 @@ async def test_removing_geobox_device_disables_and_stops_only_source(hass):
     other_coordinator.async_shutdown.assert_not_awaited()
     assert (
         GEOBOX_BRANDIS_SOURCE
-        not in hass.data[DOMAIN][SUPPLEMENTAL_COORDINATORS][entry.entry_id]
+        not in entry.runtime_data.supplemental_coordinators
     )
     assert entity_registry.async_get(entity.entity_id) is None

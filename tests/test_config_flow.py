@@ -171,15 +171,6 @@ def mock_config_service(mocker):
 def mock_integration_setup(mocker, mock_config_service):
     """Mock für die Integration Setup, um den ConfigService korrekt zu injizieren."""
 
-    # Mock die Integration Setup - verhindert echte Service-Initialisierung
-    async def _mock_async_initialize_services(hass):
-        mock_hass_data(hass)
-
-    mocker.patch(
-        "custom_components.sensorbridge_partheland._async_initialize_services",
-        side_effect=_mock_async_initialize_services,
-    )
-
     # Mock async_setup_entry um echte Coordinator-Erstellung zu verhindern
     mocker.patch(
         "custom_components.sensorbridge_partheland.async_setup_entry",

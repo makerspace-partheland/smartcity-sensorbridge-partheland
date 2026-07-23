@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 import uuid
 from typing import Any, Callable, Dict, Optional
 
@@ -14,12 +15,12 @@ import paho.mqtt.client as mqtt
 from homeassistant.core import HomeAssistant
 
 from .const import (
-    MQTT_VERSION, CLIENT_ID_PREFIX,
-    EVENT_MQTT_CONNECTED, EVENT_MQTT_DISCONNECTED
+    CLIENT_ID_PREFIX,
+    EVENT_MQTT_CONNECTED,
+    EVENT_MQTT_DISCONNECTED,
+    MQTT_VERSION,
 )
-from .interfaces import MQTTServiceProtocol, ConfigServiceProtocol
-
-import ssl
+from .interfaces import ConfigServiceProtocol, MQTTServiceProtocol
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,10 +28,16 @@ _LOGGER = logging.getLogger(__name__)
 class MQTTService(MQTTServiceProtocol):
     """HA 2025 MQTT Service für reine Connection-Verwaltung."""
     
-    def __init__(self, hass: HomeAssistant, config_service: ConfigServiceProtocol) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_service: ConfigServiceProtocol,
+        entry_id: str,
+    ) -> None:
         """Initialisiert den MQTT Service."""
         self.hass = hass
         self.config_service = config_service
+        self.entry_id = entry_id
         self.client: Optional[mqtt.Client] = None
         self._connected = False
         self._callbacks: Dict[str, Callable[[str, Any], None]] = {}
@@ -221,6 +228,7 @@ class MQTTService(MQTTServiceProtocol):
                 
             except Exception as e:
                 _LOGGER.error("Fehler beim MQTT-Trennen: %s", e)
+                raise
     
     async def subscribe(self, topic: str, callback: Callable[[str, Any], None]) -> None:
         """Abonniert ein MQTT-Topic."""
@@ -259,6 +267,7 @@ class MQTTService(MQTTServiceProtocol):
     async def unsubscribe(self, topic: str) -> None:
         """Deabonniert ein MQTT-Topic."""
         if not self.client or not self._connected:
+            self._callbacks.pop(topic, None)
             return
         
         try:
@@ -271,10 +280,14 @@ class MQTTService(MQTTServiceProtocol):
                 self._callbacks.pop(topic, None)
                 _LOGGER.debug("Topic erfolgreich deabonniert: %s", topic)
             else:
-                _LOGGER.error("Fehler beim Deabonnieren von Topic %s: %s", topic, result[0])
+                raise RuntimeError(
+                    f"MQTT-Topic {topic} konnte nicht gekündigt werden: "
+                    f"{result[0]}"
+                )
                 
         except Exception as e:
             _LOGGER.error("Fehler beim Deabonnieren von Topic %s: %s", topic, e)
+            raise
     
     @property
     def is_connected(self) -> bool:
@@ -472,7 +485,10 @@ class MQTTService(MQTTServiceProtocol):
                     if event_type == "connect":
                         if self.hass is not None and hasattr(self.hass, 'bus') and self.hass.bus is not None:
                             try:
-                                self.hass.bus.async_fire(EVENT_MQTT_CONNECTED)
+                                self.hass.bus.async_fire(
+                                    EVENT_MQTT_CONNECTED,
+                                    {"entry_id": self.entry_id},
+                                )
                                 # Nach erfolgreichem Reconnect automatisch alle Topics erneut abonnieren
                                 await self._resubscribe_all()
                             except Exception as e:
@@ -482,7 +498,10 @@ class MQTTService(MQTTServiceProtocol):
                     elif event_type == "disconnect":
                         if self.hass is not None and hasattr(self.hass, 'bus') and self.hass.bus is not None:
                             try:
-                                self.hass.bus.async_fire(EVENT_MQTT_DISCONNECTED)
+                                self.hass.bus.async_fire(
+                                    EVENT_MQTT_DISCONNECTED,
+                                    {"entry_id": self.entry_id},
+                                )
                             except Exception as e:
                                 _LOGGER.error("Fehler beim Firen des Disconnect-Events: %s", e)
                         else:
@@ -503,4 +522,4 @@ class MQTTService(MQTTServiceProtocol):
         except asyncio.CancelledError:
             _LOGGER.debug("Event-Processor beendet")
         except Exception as e:
-            _LOGGER.error("Event-Processor Fehler: %s", e) 
+            _LOGGER.error("Event-Processor Fehler: %s", e)

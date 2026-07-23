@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -18,7 +19,6 @@ from custom_components.sensorbridge_partheland.const import (
     CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
     DOMAIN,
     DWD_PRECIPITATION_STATIONS,
-    SUPPLEMENTAL_COORDINATORS,
 )
 from custom_components.sensorbridge_partheland.precipitation import (
     DwdPrecipitationCoordinator,
@@ -226,14 +226,12 @@ async def test_removing_precipitation_device_disables_and_stops_only_source(hass
     entry.add_to_hass(hass)
     coordinator = AsyncMock()
     other_coordinator = AsyncMock()
-    hass.data[DOMAIN] = {
-        SUPPLEMENTAL_COORDINATORS: {
-            entry.entry_id: {
-                station["source"]: coordinator,
-                "dwd_pollen": other_coordinator,
-            }
+    entry.runtime_data = SimpleNamespace(
+        supplemental_coordinators={
+            station["source"]: coordinator,
+            "dwd_pollen": other_coordinator,
         }
-    }
+    )
 
     device_registry = dr.async_get(hass)
     device = device_registry.async_get_or_create(
@@ -256,7 +254,5 @@ async def test_removing_precipitation_device_disables_and_stops_only_source(hass
     assert entry.data[CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS] is False
     coordinator.async_shutdown.assert_awaited_once_with()
     other_coordinator.async_shutdown.assert_not_awaited()
-    assert station["source"] not in (
-        hass.data[DOMAIN][SUPPLEMENTAL_COORDINATORS][entry.entry_id]
-    )
+    assert station["source"] not in entry.runtime_data.supplemental_coordinators
     assert entity_registry.async_get(entity.entity_id) is None

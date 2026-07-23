@@ -6,24 +6,28 @@ HA 2025 Compliant - Reine Orchestrierung
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
-import time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.debounce import Debouncer
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     DEFAULT_SCAN_INTERVAL,
-    EVENT_SENSOR_DATA_RECEIVED,
     EVENT_MQTT_CONNECTED,
     EVENT_MQTT_DISCONNECTED,
+    EVENT_SENSOR_DATA_RECEIVED,
 )
 from .interfaces import (
-    CoordinatorProtocol, ConfigServiceProtocol, MQTTServiceProtocol,
-    ParserServiceProtocol, EntityFactoryProtocol, ErrorHandlerProtocol
+    ConfigServiceProtocol,
+    CoordinatorProtocol,
+    EntityFactoryProtocol,
+    ErrorHandlerProtocol,
+    MQTTServiceProtocol,
+    ParserServiceProtocol,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,6 +80,8 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         self._per_device_stale: Dict[str, int] = {}
         self._mqtt_unsubs: List[Any] = []
         self._ha_entity_ids_by_device: Dict[str, set[str]] = {}
+        self._base_shutdown_complete = False
+        self._mqtt_disconnect_complete = False
         
         _LOGGER.debug("Coordinator initialisiert für %d Geräte", len(self.selected_devices))
     
@@ -136,41 +142,67 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             
             _LOGGER.info("Coordinator erfolgreich gestartet")
             
-        except Exception as e:
-            await self.error_handler.handle_error(e, "Coordinator First Refresh")
-            raise UpdateFailed(f"Coordinator-Start fehlgeschlagen: {e}")
+        except UpdateFailed as err:
+            await self.error_handler.handle_error(
+                err, "Coordinator First Refresh"
+            )
+            raise
+        except Exception as err:
+            await self.error_handler.handle_error(
+                err, "Coordinator First Refresh"
+            )
+            raise
     
     async def async_shutdown(self) -> None:
         """Beendet den Coordinator."""
-        try:
-            _LOGGER.debug("Beende Coordinator")
+        _LOGGER.debug("Beende Coordinator")
+        errors: list[Exception] = []
 
-            # DataUpdateCoordinator-Shutdown räumt den Debouncer-Timer und
-            # geplante Refreshes auf. Ohne diesen Aufruf bleibt beim Reload ein
-            # schwebender Timer zurück.
-            await super().async_shutdown()
-            
-            # MQTT-Topics kündigen
-            await self._unsubscribe_from_topics()
-            
-            # MQTT-Verbindung trennen
-            await self.mqtt_service.disconnect()
-
-            # Event-Listener entfernen
+        if not self._base_shutdown_complete:
             try:
-                for unsub in self._mqtt_unsubs:
-                    try:
-                        unsub()
-                    except Exception:
-                        pass
-                self._mqtt_unsubs.clear()
+                # DataUpdateCoordinator-Shutdown räumt den Debouncer-Timer und
+                # geplante Refreshes auf.
+                await super().async_shutdown()
+            except Exception as err:
+                errors.append(err)
+            else:
+                self._base_shutdown_complete = True
+
+        try:
+            await self._unsubscribe_from_topics()
+        except Exception as err:
+            errors.append(err)
+
+        if not self._mqtt_disconnect_complete:
+            try:
+                await self.mqtt_service.disconnect()
+            except Exception as err:
+                errors.append(err)
+            else:
+                self._mqtt_disconnect_complete = True
+
+        remaining_unsubs = []
+        for unsub in self._mqtt_unsubs:
+            try:
+                unsub()
+            except Exception as err:
+                errors.append(err)
+                remaining_unsubs.append(unsub)
+        self._mqtt_unsubs = remaining_unsubs
+
+        if errors:
+            shutdown_error = RuntimeError(
+                f"Coordinator-Shutdown unvollständig ({len(errors)} Fehler)"
+            )
+            try:
+                await self.error_handler.handle_error(
+                    shutdown_error, "Coordinator Shutdown"
+                )
             except Exception:
                 pass
-            
-            _LOGGER.info("Coordinator erfolgreich beendet")
-            
-        except Exception as e:
-            await self.error_handler.handle_error(e, "Coordinator Shutdown")
+            raise shutdown_error from errors[0]
+
+        _LOGGER.info("Coordinator erfolgreich beendet")
     
     async def update_sensor_data(self, device_id: str, sensor_data: Dict[str, Any]) -> None:
         """Aktualisiert Sensordaten."""
@@ -239,6 +271,8 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
 
     async def _on_mqtt_connected_event(self, event: Any) -> None:
         """Reagiere auf MQTT-Connect: UI-Update triggern."""
+        if event.data.get("entry_id") != self.entry.entry_id:
+            return
         try:
             self.async_set_updated_data(self._sensor_data)
         except Exception as e:
@@ -246,6 +280,8 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
 
     async def _on_mqtt_disconnected_event(self, event: Any) -> None:
         """Reagiere auf MQTT-Disconnect: UI-Update triggern (Entities können unavailable werden)."""
+        if event.data.get("entry_id") != self.entry.entry_id:
+            return
         try:
             self.async_set_updated_data(self._sensor_data)
         except Exception as e:
@@ -372,17 +408,23 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
     
     async def _unsubscribe_from_topics(self) -> None:
         """Kündigt MQTT-Topics."""
-        try:
-            _LOGGER.debug("Kündige MQTT-Topics")
-            
-            for topic in self._mqtt_topics:
+        _LOGGER.debug("Kündige MQTT-Topics")
+        remaining_topics = []
+        errors: list[Exception] = []
+
+        for topic in self._mqtt_topics:
+            try:
                 await self.mqtt_service.unsubscribe(topic)
-            
-            self._mqtt_topics.clear()
-            _LOGGER.debug("MQTT-Topics gekündigt")
-            
-        except Exception as e:
-            await self.error_handler.handle_error(e, "Unsubscribe from Topics")
+            except Exception as err:
+                remaining_topics.append(topic)
+                errors.append(err)
+
+        self._mqtt_topics = remaining_topics
+        if errors:
+            raise RuntimeError(
+                f"{len(errors)} MQTT-Topics konnten nicht gekündigt werden"
+            ) from errors[0]
+        _LOGGER.debug("MQTT-Topics gekündigt")
     
     async def _handle_mqtt_message(self, topic: str, payload: Any) -> None:
         """Behandelt MQTT-Nachrichten."""

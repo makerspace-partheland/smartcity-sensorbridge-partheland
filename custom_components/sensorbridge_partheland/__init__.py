@@ -5,25 +5,29 @@ HA 2025 Compliant - Moderne Integration für Umweltsensorik
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigEntryError,
+    ConfigEntryNotReady,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .api_client import DeviceCatalogError
 from .config_service import ConfigService
 from .const import (
-    CONFIG_ENTRY_VERSION,
     CONF_DEVICE_METADATA,
     CONF_INCLUDE_DWD_POLLEN,
-    CONF_INCLUDE_DWD_PRECIPITATION_BELGERSHAIN,
-    CONF_INCLUDE_DWD_PRECIPITATION_BRANDIS,
     CONF_INCLUDE_GEOBOX_BRANDIS,
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
+    CONFIG_ENTRY_VERSION,
     DOMAIN,
     DWD_POLLEN_DEVICE_ID,
     DWD_POLLEN_SOURCE,
@@ -31,15 +35,17 @@ from .const import (
     GEOBOX_BRANDIS_DEVICE_ID,
     GEOBOX_BRANDIS_SOURCE,
     PLATFORMS,
-    SUPPLEMENTAL_COORDINATORS,
 )
 from .entity_factory import EntityFactory
 from .error_handler import ErrorHandler
 from .mqtt_service import MQTTService
 from .parser_service import ParserService
-from .translation_helper import TranslationHelper
+from .runtime import SensorBridgeConfigEntry, SensorBridgeRuntimeData
 
 _LOGGER = logging.getLogger(__name__)
+_SHUTDOWN_ATTEMPTS = 3
+_PENDING_RUNTIME_SHUTDOWNS = "pending_runtime_shutdowns"
+_PENDING_RUNTIME_TASKS = "pending_runtime_tasks"
 
 
 async def async_migrate_entry(
@@ -105,9 +111,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         # Domain in hass.data initialisieren
         hass.data.setdefault(DOMAIN, {})
 
-        # Services asynchron initialisieren
-        await _async_initialize_services(hass)
-
         # Hinweis: Geräte-Icons werden nicht separat gecacht – Gerätelisten-Icons stammen
         # aus der primären Entität (MDI), nicht aus benutzerdefinierten Mappings.
 
@@ -138,104 +141,289 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         return False
 
 
-async def _async_initialize_services(hass: HomeAssistant) -> None:
-    """Initialisiert alle Services asynchron."""
+async def _async_create_runtime(
+    hass: HomeAssistant, entry: SensorBridgeConfigEntry
+) -> SensorBridgeRuntimeData:
+    """Erstelle voneinander getrennte Laufzeitobjekte für einen Config-Entry."""
+    config_service = ConfigService(hass)
+    config_service.register_entry_data(dict(entry.data))
+    if not await config_service.validate_config():
+        raise ConfigEntryError("Lokale Integrationskonfiguration ist ungültig")
+
+    mqtt_service = MQTTService(hass, config_service, entry.entry_id)
+    parser_service = ParserService(hass, config_service)
+    entity_factory = EntityFactory(hass, config_service)
+    error_handler = ErrorHandler(hass)
+
+    from .coordinator import SensorBridgeCoordinator
+
+    coordinator = SensorBridgeCoordinator(
+        hass=hass,
+        entry=entry,
+        config_service=config_service,
+        mqtt_service=mqtt_service,
+        parser_service=parser_service,
+        entity_factory=entity_factory,
+        error_handler=error_handler,
+    )
+    return SensorBridgeRuntimeData(
+        config_service=config_service,
+        coordinator=coordinator,
+        supplemental_coordinators={},
+    )
+
+
+async def _async_shutdown_runtime(runtime: SensorBridgeRuntimeData) -> bool:
+    """Beende alle Laufzeitobjekte unabhängig voneinander."""
+    shutdown_ok = True
+    for source, coordinator in list(runtime.supplemental_coordinators.items()):
+        try:
+            await coordinator.async_shutdown()
+        except Exception as err:
+            shutdown_ok = False
+            _LOGGER.warning(
+                "Zusatzquelle %s konnte nicht beendet werden: %s", source, err
+            )
+        else:
+            runtime.supplemental_coordinators.pop(source, None)
+
+    if not runtime.coordinator_shutdown:
+        try:
+            await runtime.coordinator.async_shutdown()
+        except Exception as err:
+            shutdown_ok = False
+            _LOGGER.warning("Coordinator konnte nicht beendet werden: %s", err)
+        else:
+            runtime.coordinator_shutdown = True
+
+    return shutdown_ok
+
+
+async def _async_shutdown_runtime_with_retries(
+    runtime: SensorBridgeRuntimeData,
+) -> bool:
+    """Wiederhole ausschließlich noch nicht abgeschlossene Cleanup-Schritte."""
+    async with runtime.shutdown_lock:
+        for _attempt in range(_SHUTDOWN_ATTEMPTS):
+            if await _async_shutdown_runtime(runtime):
+                return True
+    return False
+
+
+def _async_remove_pending_runtime(
+    hass: HomeAssistant,
+    entry_id: str,
+    runtime: SensorBridgeRuntimeData,
+) -> None:
+    """Entferne einen vollständig beendeten ausstehenden Runtime-Owner."""
+    pending_runtimes = hass.data.get(DOMAIN, {}).get(
+        _PENDING_RUNTIME_SHUTDOWNS, {}
+    )
+    if pending_runtimes.get(entry_id) is runtime:
+        pending_runtimes.pop(entry_id, None)
+    if not pending_runtimes:
+        hass.data.get(DOMAIN, {}).pop(_PENDING_RUNTIME_SHUTDOWNS, None)
+
+
+async def _async_retry_pending_runtime_shutdown(
+    hass: HomeAssistant,
+    entry: SensorBridgeConfigEntry,
+    runtime: SensorBridgeRuntimeData,
+) -> None:
+    """Beende eine ausstehende Runtime unabhängig von einem Folgesetup."""
+    entry_id = entry.entry_id
+    retry_delay = 1
     try:
-        # Services asynchron initialisieren
-        config_service = await hass.async_add_executor_job(ConfigService, hass)
-        # Direkt erstellen, da async
-        mqtt_service = MQTTService(hass, config_service)
-        parser_service = await hass.async_add_executor_job(
-            ParserService, hass, config_service
+        while (
+            hass.data.get(DOMAIN, {})
+            .get(_PENDING_RUNTIME_SHUTDOWNS, {})
+            .get(entry_id)
+            is runtime
+        ):
+            platforms_unloaded = await _async_unload_runtime_platforms(
+                hass, entry, runtime
+            )
+            runtime_shutdown = (
+                platforms_unloaded
+                and await _async_shutdown_runtime_with_retries(runtime)
+            )
+            if runtime_shutdown:
+                _async_remove_pending_runtime(hass, entry_id, runtime)
+                if getattr(entry, "runtime_data", None) is runtime:
+                    entry.runtime_data = None
+                return
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 60)
+    finally:
+        pending_tasks = hass.data.get(DOMAIN, {}).get(
+            _PENDING_RUNTIME_TASKS, {}
         )
-        entity_factory = await hass.async_add_executor_job(
-            EntityFactory, hass, config_service
+        task_owner = pending_tasks.get(entry_id)
+        if (
+            task_owner is not None
+            and task_owner[0] is runtime
+            and task_owner[1] is asyncio.current_task()
+        ):
+            pending_tasks.pop(entry_id, None)
+        if not pending_tasks:
+            hass.data.get(DOMAIN, {}).pop(_PENDING_RUNTIME_TASKS, None)
+
+
+def _async_schedule_pending_runtime_cleanup(
+    hass: HomeAssistant,
+    entry: SensorBridgeConfigEntry,
+    runtime: SensorBridgeRuntimeData,
+) -> None:
+    """Plane den unabhängigen Cleanup einer ausstehenden Runtime."""
+    entry_id = entry.entry_id
+    pending_tasks = hass.data.setdefault(DOMAIN, {}).setdefault(
+        _PENDING_RUNTIME_TASKS, {}
+    )
+    task_owner = pending_tasks.get(entry_id)
+    if (
+        task_owner is not None
+        and task_owner[0] is runtime
+        and not task_owner[1].done()
+    ):
+        return
+    task = hass.async_create_background_task(
+        _async_retry_pending_runtime_shutdown(hass, entry, runtime),
+        f"{DOMAIN} pending runtime cleanup {entry_id}",
+        eager_start=False,
+    )
+    pending_tasks[entry_id] = (runtime, task)
+
+
+async def _async_unload_runtime_platforms(
+    hass: HomeAssistant,
+    entry: SensorBridgeConfigEntry,
+    runtime: SensorBridgeRuntimeData,
+) -> bool:
+    """Entlade jede noch aktive Plattform einzeln und idempotent."""
+    if runtime.platforms_unloaded:
+        return True
+    if not runtime.pending_platforms:
+        runtime.platforms_unloaded = True
+        return True
+
+    for _attempt in range(_SHUTDOWN_ATTEMPTS):
+        for platform in list(runtime.pending_platforms):
+            try:
+                unload_ok = (
+                    await hass.config_entries.async_forward_entry_unload(
+                        entry, platform
+                    )
+                )
+            except ValueError as err:
+                if "was never loaded" not in str(err):
+                    _LOGGER.warning(
+                        "Fehler beim Entladen der Plattform %s: %s",
+                        platform,
+                        err,
+                    )
+                    continue
+                unload_ok = True
+            except Exception as err:
+                _LOGGER.warning(
+                    "Fehler beim Entladen der Plattform %s: %s",
+                    platform,
+                    err,
+                )
+                continue
+            if unload_ok:
+                runtime.pending_platforms.discard(platform)
+            else:
+                _LOGGER.warning(
+                    "Plattform %s konnte nicht entladen werden", platform
+                )
+        if not runtime.pending_platforms:
+            runtime.platforms_unloaded = True
+            return True
+
+    return False
+
+
+async def _async_unload_runtime(
+    hass: HomeAssistant,
+    entry: SensorBridgeConfigEntry,
+    runtime: SensorBridgeRuntimeData,
+    *,
+    allow_incomplete_shutdown: bool = False,
+) -> bool:
+    """Entlade Plattformen und Runtime mit wiederholbarem Fehler-Retry."""
+    if not await _async_unload_runtime_platforms(hass, entry, runtime):
+        return False
+
+    shutdown_ok = await _async_shutdown_runtime_with_retries(runtime)
+    if not shutdown_ok:
+        _LOGGER.error(
+            "Runtime-Cleanup blieb nach %d Versuchen unvollständig",
+            _SHUTDOWN_ATTEMPTS,
         )
-        error_handler = await hass.async_add_executor_job(ErrorHandler, hass)
-        translation_helper = await hass.async_add_executor_job(
-            TranslationHelper, hass
+        if not allow_incomplete_shutdown:
+            return False
+        pending_runtimes = hass.data.setdefault(DOMAIN, {}).setdefault(
+            _PENDING_RUNTIME_SHUTDOWNS, {}
         )
-
-        # Services in hass.data speichern
-        hass.data[DOMAIN]["config_service"] = config_service
-        hass.data[DOMAIN]["mqtt_service"] = mqtt_service
-        hass.data[DOMAIN]["parser_service"] = parser_service
-        hass.data[DOMAIN]["entity_factory"] = entity_factory
-        hass.data[DOMAIN]["error_handler"] = error_handler
-        hass.data[DOMAIN]["translation_helper"] = translation_helper
-
-        # Konfiguration validieren
-        if not await config_service.validate_config():
-            _LOGGER.error("Konfigurationsvalidierung fehlgeschlagen")
-            return
-
-        _LOGGER.debug("Alle Services erfolgreich initialisiert")
-
-    except Exception as e:
-        _LOGGER.error("Fehler bei der Service-Initialisierung: %s", e)
-        # Fallback: Leere Services erstellen
-        hass.data[DOMAIN]["config_service"] = (
-            await hass.async_add_executor_job(ConfigService, hass)
+        pending_runtimes[entry.entry_id] = runtime
+        _async_schedule_pending_runtime_cleanup(
+            hass, entry, runtime
         )
-        hass.data[DOMAIN]["mqtt_service"] = None
-        hass.data[DOMAIN]["parser_service"] = None
-        hass.data[DOMAIN]["entity_factory"] = None
-        hass.data[DOMAIN]["error_handler"] = await hass.async_add_executor_job(
-            ErrorHandler, hass
-        )
-        hass.data[DOMAIN]["translation_helper"] = None
+    else:
+        _async_remove_pending_runtime(hass, entry.entry_id, runtime)
+
+    entry.runtime_data = None
+    return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: SensorBridgeConfigEntry
+) -> bool:
     """Set up SmartCity SensorBridge Partheland from a config entry."""
+    runtime: SensorBridgeRuntimeData | None = None
+    platforms_started = False
     try:
+        pending_runtimes = hass.data.get(DOMAIN, {}).get(
+            _PENDING_RUNTIME_SHUTDOWNS, {}
+        )
+        pending_runtime = pending_runtimes.get(entry.entry_id)
+        if pending_runtime is not None:
+            platforms_unloaded = await _async_unload_runtime_platforms(
+                hass, entry, pending_runtime
+            )
+            runtime_shutdown = (
+                platforms_unloaded
+                and await _async_shutdown_runtime_with_retries(
+                    pending_runtime
+                )
+            )
+            if not runtime_shutdown:
+                raise ConfigEntryNotReady(
+                    "Ausstehende SensorBridge-Runtime konnte nicht beendet "
+                    "werden"
+                )
+            _async_remove_pending_runtime(
+                hass, entry.entry_id, pending_runtime
+            )
+            if getattr(entry, "runtime_data", None) is pending_runtime:
+                entry.runtime_data = None
+
+        previous_runtime = getattr(entry, "runtime_data", None)
+        if previous_runtime is not None and not await _async_unload_runtime(
+            hass, entry, previous_runtime
+        ):
+            raise ConfigEntryNotReady(
+                "Vorherige SensorBridge-Runtime konnte nicht beendet werden"
+            )
+
         _LOGGER.info(
             "Setting up SmartCity SensorBridge Partheland config entry: %s",
             entry.entry_id,
         )
 
-        # Sicherstellen, dass die Services initialisiert sind
-        if DOMAIN not in hass.data:
-            hass.data[DOMAIN] = {}
-
-        required_keys = {
-            "config_service",
-            "mqtt_service",
-            "parser_service",
-            "entity_factory",
-            "error_handler",
-            "translation_helper",
-        }
-
-        if not required_keys.issubset(hass.data[DOMAIN]):
-            _LOGGER.debug(
-                "Services not initialized. Initializing services now"
-            )
-            await _async_initialize_services(hass)
-
-        # Services aus hass.data holen
-        config_service = hass.data[DOMAIN]["config_service"]
-        config_service.register_entry_data(dict(entry.data))
-        mqtt_service = hass.data[DOMAIN]["mqtt_service"]
-        parser_service = hass.data[DOMAIN]["parser_service"]
-        entity_factory = hass.data[DOMAIN]["entity_factory"]
-        error_handler = hass.data[DOMAIN]["error_handler"]
-
-        # Coordinator erstellen
-        from .coordinator import SensorBridgeCoordinator
-
-        coordinator = SensorBridgeCoordinator(
-            hass=hass,
-            entry=entry,
-            config_service=config_service,
-            mqtt_service=mqtt_service,
-            parser_service=parser_service,
-            entity_factory=entity_factory,
-            error_handler=error_handler,
-        )
-
-        # Coordinator in hass.data speichern
-        hass.data[DOMAIN][entry.entry_id] = coordinator
+        runtime = await _async_create_runtime(hass, entry)
+        entry.runtime_data = runtime
+        runtime.pending_platforms.clear()
 
         # Config Entry Daten loggen
         selected_devices = entry.data.get("selected_devices", [])
@@ -249,18 +437,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
         # Coordinator starten
-        await coordinator.async_config_entry_first_refresh()
+        await runtime.coordinator.async_config_entry_first_refresh()
 
-        supplemental_by_entry = hass.data[DOMAIN].setdefault(
-            SUPPLEMENTAL_COORDINATORS, {}
-        )
-        supplemental_coordinators = {}
         if entry.data.get(CONF_INCLUDE_DWD_POLLEN, False):
             from .pollen import DwdPollenCoordinator
 
             pollen_coordinator = DwdPollenCoordinator(hass, entry)
+            runtime.supplemental_coordinators[DWD_POLLEN_SOURCE] = (
+                pollen_coordinator
+            )
             await pollen_coordinator.async_refresh()
-            supplemental_coordinators[DWD_POLLEN_SOURCE] = pollen_coordinator
         for station_id, station in DWD_PRECIPITATION_STATIONS.items():
             if not entry.data.get(station["config_key"], False):
                 continue
@@ -269,26 +455,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             precipitation_coordinator = DwdPrecipitationCoordinator(
                 hass, entry, station_id
             )
-            await precipitation_coordinator.async_refresh()
-            supplemental_coordinators[station["source"]] = (
+            runtime.supplemental_coordinators[station["source"]] = (
                 precipitation_coordinator
             )
+            await precipitation_coordinator.async_refresh()
         if entry.data.get(CONF_INCLUDE_GEOBOX_BRANDIS, False):
             from .geobox import GeoBoxBrandisCoordinator
 
             geobox_coordinator = GeoBoxBrandisCoordinator(hass, entry)
+            runtime.supplemental_coordinators[GEOBOX_BRANDIS_SOURCE] = (
+                geobox_coordinator
+            )
             await geobox_coordinator.async_refresh()
-            supplemental_coordinators[GEOBOX_BRANDIS_SOURCE] = geobox_coordinator
-        supplemental_by_entry[entry.entry_id] = supplemental_coordinators
 
-        # Plattformen laden (idempotent): Vor erneutem Setup sicherstellen, dass nicht doppelt geladen wird
-        try:
-            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        except ValueError as e:
-            # "has already been setup" vermeiden: vorher entladen und erneut laden
-            _LOGGER.warning("Platform already setup, reloading platforms: %s", e)
-            await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        platforms_started = True
+        runtime.pending_platforms = {str(platform) for platform in PLATFORMS}
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
         # Nach dem (Neu-)Setup: Nicht mehr ausgewählte Entitäten/Geräte aus den Registern entfernen
         try:
@@ -310,67 +492,50 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         return True
 
-    except Exception as e:
-        _LOGGER.error("Fehler beim Setup der Config Entry: %s", e)
-        return False
+    except Exception as err:
+        rollback_ok = True
+        if platforms_started:
+            if runtime is not None:
+                rollback_ok = await _async_unload_runtime_platforms(
+                    hass, entry, runtime
+                )
+        elif runtime is not None:
+            runtime.platforms_unloaded = True
+        if runtime is not None:
+            if rollback_ok and await _async_shutdown_runtime_with_retries(
+                runtime
+            ):
+                entry.runtime_data = None
+            else:
+                entry.runtime_data = runtime
+                pending_runtimes = hass.data.setdefault(
+                    DOMAIN, {}
+                ).setdefault(_PENDING_RUNTIME_SHUTDOWNS, {})
+                pending_runtimes[entry.entry_id] = runtime
+                _async_schedule_pending_runtime_cleanup(
+                    hass, entry, runtime
+                )
+        if isinstance(err, UpdateFailed):
+            raise ConfigEntryNotReady(
+                f"SensorBridge konnte nicht gestartet werden: {err}"
+            ) from err
+        raise
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(
+    hass: HomeAssistant, entry: SensorBridgeConfigEntry
+) -> bool:
     """Unload a config entry."""
     _LOGGER.info("Unloading SensorBridge integration")
 
-    # 1) Zuerst Plattformen sauber entladen (entfernt Entities/Devices korrekt)
-    try:
-        platforms_unloaded = await hass.config_entries.async_unload_platforms(
-            entry, PLATFORMS
-        )
-        if not platforms_unloaded:
-            _LOGGER.warning("Nicht alle Plattformen konnten entladen werden")
-    except Exception as e:
-        _LOGGER.error("Fehler beim Entladen der Plattformen: %s", e)
-
-    # 2) Laufende Tasks/Services herunterfahren
-    try:
-        supplemental_by_entry = hass.data.get(DOMAIN, {}).get(
-            SUPPLEMENTAL_COORDINATORS, {}
-        )
-        supplemental_coordinators = supplemental_by_entry.pop(entry.entry_id, {})
-        for coordinator in supplemental_coordinators.values():
-            await coordinator.async_shutdown()
-        if not supplemental_by_entry:
-            hass.data.get(DOMAIN, {}).pop(SUPPLEMENTAL_COORDINATORS, None)
-    except Exception as e:
-        _LOGGER.debug("Zusatzquellen-Shutdown Warnung: %s", e)
-
-    try:
-        if entry.entry_id in hass.data.get(DOMAIN, {}):
-            coordinator = hass.data[DOMAIN][entry.entry_id]
-            await coordinator.async_shutdown()
-            del hass.data[DOMAIN][entry.entry_id]
-    except Exception as e:
-        _LOGGER.debug("Coordinator Shutdown Warnung: %s", e)
-
-    try:
-        mqtt_service = hass.data[DOMAIN].get("mqtt_service")
-        if mqtt_service:
-            await mqtt_service.disconnect()
-            del hass.data[DOMAIN]["mqtt_service"]
-    except Exception as e:
-        _LOGGER.debug("MQTT Disconnect Warnung: %s", e)
-
-    # 3) Restliche Referenzen entfernen
-    for key in [
-        "config_service",
-        "parser_service",
-        "entity_factory",
-        "translation_helper",
-        "error_handler",
-    ]:
-        if key in hass.data.get(DOMAIN, {}):
-            del hass.data[DOMAIN][key]
-
-    if DOMAIN in hass.data and not hass.data[DOMAIN]:
-        del hass.data[DOMAIN]
+    runtime = entry.runtime_data
+    if not await _async_unload_runtime(
+        hass,
+        entry,
+        runtime,
+        allow_incomplete_shutdown=True,
+    ):
+        return False
 
     _LOGGER.info("SensorBridge integration unloaded successfully")
     return True
@@ -396,7 +561,7 @@ async def async_remove_config_entry_device(
 
         data = dict(entry.data)
         changed = False
-        supplemental_removed = False
+        removed_source: str | None = None
 
         # Aus ausgewählten Geräten entfernen
         if external_id in data.get(CONF_SELECTED_DEVICES, []):
@@ -410,48 +575,40 @@ async def async_remove_config_entry_device(
             ]
             changed = True
 
-        if (
-            external_id == DWD_POLLEN_DEVICE_ID
-            and data.get(CONF_INCLUDE_DWD_POLLEN, False)
-        ):
-            data[CONF_INCLUDE_DWD_POLLEN] = False
-            changed = True
-            supplemental_removed = True
-
-        removed_source = DWD_POLLEN_SOURCE
-        for station in DWD_PRECIPITATION_STATIONS.values():
-            if (
-                external_id == station["device_id"]
-                and data.get(station["config_key"], False)
-            ):
-                data[station["config_key"]] = False
+        if external_id == DWD_POLLEN_DEVICE_ID:
+            removed_source = DWD_POLLEN_SOURCE
+            if data.get(CONF_INCLUDE_DWD_POLLEN, False):
+                data[CONF_INCLUDE_DWD_POLLEN] = False
                 changed = True
-                supplemental_removed = True
+
+        for station in DWD_PRECIPITATION_STATIONS.values():
+            if external_id == station["device_id"]:
                 removed_source = station["source"]
+                if data.get(station["config_key"], False):
+                    data[station["config_key"]] = False
+                    changed = True
                 break
-        if (
-            external_id == GEOBOX_BRANDIS_DEVICE_ID
-            and data.get(CONF_INCLUDE_GEOBOX_BRANDIS, False)
-        ):
-            data[CONF_INCLUDE_GEOBOX_BRANDIS] = False
-            changed = True
-            supplemental_removed = True
+        if external_id == GEOBOX_BRANDIS_DEVICE_ID:
             removed_source = GEOBOX_BRANDIS_SOURCE
+            if data.get(CONF_INCLUDE_GEOBOX_BRANDIS, False):
+                data[CONF_INCLUDE_GEOBOX_BRANDIS] = False
+                changed = True
 
         if changed:
             # 1) Config-Entry aktualisieren (damit Auswahl konsistent ist)
             hass.config_entries.async_update_entry(entry, data=data)
 
-        if supplemental_removed:
-            supplemental_by_entry = hass.data.get(DOMAIN, {}).get(
-                SUPPLEMENTAL_COORDINATORS, {}
+        if removed_source is not None:
+            runtime = getattr(entry, "runtime_data", None)
+            supplemental_coordinators = (
+                runtime.supplemental_coordinators if runtime is not None else {}
             )
-            supplemental_coordinators = supplemental_by_entry.get(entry.entry_id, {})
-            supplemental_coordinator = supplemental_coordinators.pop(
-                removed_source, None
+            supplemental_coordinator = supplemental_coordinators.get(
+                removed_source
             )
             if supplemental_coordinator is not None:
                 await supplemental_coordinator.async_shutdown()
+                supplemental_coordinators.pop(removed_source, None)
 
         # 2) Entitäten dieses Geräts direkt entfernen (korrekte Filterung: über config_entry_id & device_id)
         entity_registry = er.async_get(hass)
@@ -562,11 +719,18 @@ async def debug_translations_service(hass: HomeAssistant, call) -> None:
             _LOGGER.error("Domain %s nicht in hass.data gefunden", DOMAIN)
             return
 
-        config_service = hass.data[DOMAIN].get("config_service")
+        config_service = next(
+            (
+                runtime.config_service
+                for entry in hass.config_entries.async_entries(DOMAIN)
+                if (runtime := getattr(entry, "runtime_data", None))
+                is not None
+            ),
+            None,
+        )
         if config_service:
             # Translation-API direkt testen
-            from homeassistant.helpers.translation import \
-                async_get_translations
+            from homeassistant.helpers.translation import async_get_translations
 
             translations = await async_get_translations(
                 hass, hass.config.language, "entity", [DOMAIN]

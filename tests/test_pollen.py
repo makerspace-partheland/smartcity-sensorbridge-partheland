@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -16,7 +17,6 @@ from custom_components.sensorbridge_partheland.const import (
     DOMAIN,
     DWD_POLLEN_DEVICE_ID,
     DWD_POLLEN_SOURCE,
-    SUPPLEMENTAL_COORDINATORS,
 )
 from custom_components.sensorbridge_partheland.pollen import (
     DwdPollenCoordinator,
@@ -143,9 +143,9 @@ async def test_removing_pollen_device_disables_and_stops_source(hass):
     )
     entry.add_to_hass(hass)
     coordinator = AsyncMock()
-    hass.data[DOMAIN] = {
-        SUPPLEMENTAL_COORDINATORS: {entry.entry_id: {DWD_POLLEN_SOURCE: coordinator}}
-    }
+    entry.runtime_data = SimpleNamespace(
+        supplemental_coordinators={DWD_POLLEN_SOURCE: coordinator}
+    )
 
     device_registry = dr.async_get(hass)
     device = device_registry.async_get_or_create(
@@ -168,7 +168,45 @@ async def test_removing_pollen_device_disables_and_stops_source(hass):
     assert entry.data[CONF_INCLUDE_DWD_POLLEN] is False
     coordinator.async_shutdown.assert_awaited_once_with()
     assert (
-        DWD_POLLEN_SOURCE
-        not in hass.data[DOMAIN][SUPPLEMENTAL_COORDINATORS][entry.entry_id]
+        DWD_POLLEN_SOURCE not in entry.runtime_data.supplemental_coordinators
     )
     assert entity_registry.async_get(entity.entity_id) is None
+
+
+async def test_failed_pollen_shutdown_keeps_runtime_reference(hass):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_INCLUDE_DWD_POLLEN: True},
+    )
+    entry.add_to_hass(hass)
+    coordinator = AsyncMock()
+    coordinator.async_shutdown.side_effect = [
+        RuntimeError("shutdown failed"),
+        None,
+    ]
+    entry.runtime_data = SimpleNamespace(
+        supplemental_coordinators={DWD_POLLEN_SOURCE: coordinator}
+    )
+
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, DWD_POLLEN_DEVICE_ID)},
+        name="DWD Pollenflug Tiefland Sachsen",
+    )
+
+    assert await async_remove_config_entry_device(hass, entry, device) is False
+
+    assert entry.data[CONF_INCLUDE_DWD_POLLEN] is False
+    assert (
+        entry.runtime_data.supplemental_coordinators[DWD_POLLEN_SOURCE]
+        is coordinator
+    )
+
+    assert await async_remove_config_entry_device(hass, entry, device) is True
+
+    assert coordinator.async_shutdown.await_count == 2
+    assert (
+        DWD_POLLEN_SOURCE
+        not in entry.runtime_data.supplemental_coordinators
+    )

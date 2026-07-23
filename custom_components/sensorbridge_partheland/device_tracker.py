@@ -6,23 +6,22 @@ import math
 from typing import Any
 
 from homeassistant.components.device_tracker import SourceType, TrackerEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 
 from .const import CONF_SELECTED_DEVICES, DOMAIN, MANUFACTURER
-from .interfaces import ConfigServiceProtocol
+from .runtime import SensorBridgeConfigEntry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: SensorBridgeConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Richte einen ortsfesten Standort je ausgewählter Messquelle ein."""
-    config_service: ConfigServiceProtocol = hass.data[DOMAIN]["config_service"]
+    config_service = entry.runtime_data.config_service
     trackers: list[SensorBridgeStationTracker] = []
 
     for device_id in entry.data.get(CONF_SELECTED_DEVICES, []):

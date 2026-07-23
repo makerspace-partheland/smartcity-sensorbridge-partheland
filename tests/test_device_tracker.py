@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -45,11 +46,11 @@ async def test_setup_creates_trackers_only_for_selected_valid_coordinates(hass):
             "longitude": 12,
         },
     ]
-    hass.data[DOMAIN] = {"config_service": config_service}
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={"selected_devices": ["valid", "missing", "invalid"]},
     )
+    entry.runtime_data = SimpleNamespace(config_service=config_service)
     add_entities = Mock()
 
     await async_setup_entry(hass, entry, add_entities)
@@ -66,7 +67,6 @@ async def test_setup_keeps_existing_planned_or_defective_sources(hass):
     defective["operationalstatus"] = "defective"
     config_service = AsyncMock()
     config_service.get_device_by_id.side_effect = [planned, defective]
-    hass.data[DOMAIN] = {"config_service": config_service}
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -74,6 +74,7 @@ async def test_setup_keeps_existing_planned_or_defective_sources(hass):
             "selected_median_entities": ["median"],
         },
     )
+    entry.runtime_data = SimpleNamespace(config_service=config_service)
     add_entities = Mock()
 
     await async_setup_entry(hass, entry, add_entities)
@@ -87,7 +88,6 @@ async def test_setup_keeps_existing_planned_or_defective_sources(hass):
 
 async def test_setup_does_not_create_trackers_for_medians(hass):
     config_service = AsyncMock()
-    hass.data[DOMAIN] = {"config_service": config_service}
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -95,6 +95,7 @@ async def test_setup_does_not_create_trackers_for_medians(hass):
             "selected_median_entities": ["median"],
         },
     )
+    entry.runtime_data = SimpleNamespace(config_service=config_service)
     add_entities = Mock()
 
     await async_setup_entry(hass, entry, add_entities)

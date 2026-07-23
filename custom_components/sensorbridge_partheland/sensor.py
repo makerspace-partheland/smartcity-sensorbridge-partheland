@@ -6,24 +6,22 @@ HA 2025 Compliant - Sensor-Entity-Implementierung
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
 import time
+from typing import Any, Dict, Optional, override
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import slugify
-from homeassistant.helpers.entity import async_generate_entity_id
 
 from .const import (
     DOMAIN,
@@ -31,27 +29,24 @@ from .const import (
     DWD_PRECIPITATION_STATIONS,
     GEOBOX_BRANDIS_SOURCE,
     MANUFACTURER,
-    SUPPLEMENTAL_COORDINATORS,
 )
 from .coordinator import SensorBridgeCoordinator
 from .interfaces import ConfigServiceProtocol
+from .runtime import SensorBridgeConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: SensorBridgeConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up SensorBridge sensors from a config entry."""
     _LOGGER.debug("Setting up SensorBridge sensors")
 
-    # Coordinator holen
-    coordinator: SensorBridgeCoordinator = hass.data[DOMAIN][entry.entry_id]
-
-    # Config Service holen
-    config_service: ConfigServiceProtocol = hass.data[DOMAIN]["config_service"]
+    coordinator = entry.runtime_data.coordinator
+    config_service = entry.runtime_data.config_service
 
     # Entities erstellen
     entities = []
@@ -75,11 +70,7 @@ async def async_setup_entry(
             )
             entities.extend(median_entities)
 
-        supplemental_coordinators = (
-            hass.data[DOMAIN]
-            .get(SUPPLEMENTAL_COORDINATORS, {})
-            .get(entry.entry_id, {})
-        )
+        supplemental_coordinators = entry.runtime_data.supplemental_coordinators
         pollen_coordinator = supplemental_coordinators.get(DWD_POLLEN_SOURCE)
         if pollen_coordinator is not None:
             from .pollen import create_pollen_entities
@@ -356,20 +347,10 @@ class SensorBridgeSensor(SensorEntity):
 
         device_name = entity_data.get("device_name", device_id)
 
-        # Entity-ID vorbereiten. Mit `has_entity_name=True` stellt Home
-        # Assistant den Gerätenamen automatisch voran. Wir schlagen daher
-        # nur einen Object-ID vor, die aus Geräte- und Sensorname besteht,
-        # damit das erste Registrieren einen stabilen Wert nutzt.
-        object_id = f"{slugify(device_name)}_{slugify(sensor_name)}"
-        self._attr_suggested_object_id = object_id
-
-        # Erzwinge das gewünschte entity_id-Schema bereits bei Erstellung
-        try:
-            self.entity_id = async_generate_entity_id(
-                "sensor.{}", object_id, hass=self.coordinator.hass
-            )
-        except Exception as e:
-            _LOGGER.debug("Konnte entity_id nicht vorab generieren: %s", e)
+        # Mit `has_entity_name=True` stellt Home Assistant den Gerätenamen
+        # automatisch voran. Der Vorschlag enthält deshalb nur den Sensornamen.
+        object_id = slugify(sensor_name)
+        self._suggested_object_id = object_id
 
         self._attr_has_entity_name = True
 
@@ -414,6 +395,13 @@ class SensorBridgeSensor(SensorEntity):
 
         # Debug-Translation-Test nicht automatisch ausführen
         self.hass = None  # Wird in async_added_to_hass gesetzt
+
+    @property
+    @override
+    def suggested_object_id(self) -> str | None:
+        """Return the stable source-field-based object ID."""
+        return self._suggested_object_id
+
     async def async_added_to_hass(self) -> None:
         """Wird aufgerufen wenn Entity zu Home Assistant hinzugefügt wird."""
         await super().async_added_to_hass()
