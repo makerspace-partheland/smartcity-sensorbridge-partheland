@@ -39,12 +39,17 @@
       },
       "extras": {
         "title": "Zusätzliche Datenquellen",
-        "description": "Wähle optionale öffentliche Datenquellen für das Partheland aus.",
         "data": {
           "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)",
           "include_dwd_precipitation_brandis": "Niederschlag (DWD, Brandis)",
           "include_dwd_precipitation_belgershain": "Niederschlag (DWD, Belgershain)",
           "include_geobox_brandis": "Agrarwetter (GeoBox, Brandis)"
+        },
+        "data_description": {
+          "include_dwd_pollen": "Gefahrenindex für acht Pollenarten – heute, morgen und übermorgen.",
+          "include_dwd_precipitation_brandis": "Niederschlag der letzten Stunde und des heutigen Tages.",
+          "include_dwd_precipitation_belgershain": "Niederschlag der letzten Stunde und des heutigen Tages.",
+          "include_geobox_brandis": "Lufttemperatur, Luftfeuchte, Niederschlag, Globalstrahlung und Windgeschwindigkeit."
         }
       }
     },
@@ -105,12 +110,17 @@
       },
       "extras": {
         "title": "Zusätzliche Datenquellen",
-        "description": "Wähle optionale öffentliche Datenquellen für das Partheland aus.",
         "data": {
           "include_dwd_pollen": "Pollenflug (DWD, Tiefland Sachsen)",
           "include_dwd_precipitation_brandis": "Niederschlag (DWD, Brandis)",
           "include_dwd_precipitation_belgershain": "Niederschlag (DWD, Belgershain)",
           "include_geobox_brandis": "Agrarwetter (GeoBox, Brandis)"
+        },
+        "data_description": {
+          "include_dwd_pollen": "Gefahrenindex für acht Pollenarten – heute, morgen und übermorgen.",
+          "include_dwd_precipitation_brandis": "Niederschlag der letzten Stunde und des heutigen Tages.",
+          "include_dwd_precipitation_belgershain": "Niederschlag der letzten Stunde und des heutigen Tages.",
+          "include_geobox_brandis": "Lufttemperatur, Luftfeuchte, Niederschlag, Globalstrahlung und Windgeschwindigkeit."
         }
       }
     },

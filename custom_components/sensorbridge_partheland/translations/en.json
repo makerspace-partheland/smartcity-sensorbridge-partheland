@@ -39,12 +39,17 @@
       },
       "extras": {
         "title": "Additional data sources",
-        "description": "Select optional public data sources for the Partheland region.",
         "data": {
           "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)",
           "include_dwd_precipitation_brandis": "Precipitation (DWD, Brandis)",
           "include_dwd_precipitation_belgershain": "Precipitation (DWD, Belgershain)",
           "include_geobox_brandis": "Agricultural weather (GeoBox, Brandis)"
+        },
+        "data_description": {
+          "include_dwd_pollen": "Risk index for eight pollen species – today, tomorrow, and the day after tomorrow.",
+          "include_dwd_precipitation_brandis": "Precipitation during the last hour and the current day.",
+          "include_dwd_precipitation_belgershain": "Precipitation during the last hour and the current day.",
+          "include_geobox_brandis": "Air temperature, humidity, precipitation, solar radiation, and wind speed."
         }
       }
     },
@@ -114,12 +119,17 @@
       },
       "extras": {
         "title": "Additional data sources",
-        "description": "Select optional public data sources for the Partheland region.",
         "data": {
           "include_dwd_pollen": "Pollen forecast (DWD, Saxony lowlands)",
           "include_dwd_precipitation_brandis": "Precipitation (DWD, Brandis)",
           "include_dwd_precipitation_belgershain": "Precipitation (DWD, Belgershain)",
           "include_geobox_brandis": "Agricultural weather (GeoBox, Brandis)"
+        },
+        "data_description": {
+          "include_dwd_pollen": "Risk index for eight pollen species – today, tomorrow, and the day after tomorrow.",
+          "include_dwd_precipitation_brandis": "Precipitation during the last hour and the current day.",
+          "include_dwd_precipitation_belgershain": "Precipitation during the last hour and the current day.",
+          "include_geobox_brandis": "Air temperature, humidity, precipitation, solar radiation, and wind speed."
         }
       }
     },
