@@ -22,6 +22,7 @@ PLATFORMS: Final[list[Platform]] = [
 # MQTT Configuration (Default-Werte, werden aus config.json überschrieben)
 MQTT_VERSION: Final[int] = 4  # MQTT v3.1.1
 CLIENT_ID_PREFIX: Final[str] = "hacs-sc-sensorbridge-"
+MAX_MQTT_PAYLOAD_BYTES: Final[int] = 64 * 1024
 
 # Configuration Keys
 CONF_SELECTED_DEVICES: Final[str] = "selected_devices"

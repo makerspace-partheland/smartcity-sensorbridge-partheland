@@ -14,6 +14,7 @@ from custom_components.sensorbridge_partheland.const import (
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
     DOMAIN,
+    MAX_MQTT_PAYLOAD_BYTES,
 )
 from custom_components.sensorbridge_partheland.coordinator import (
     SensorBridgeCoordinator,
@@ -98,6 +99,16 @@ async def _wait_for_subscription_waiter(service, mid):
             return
         await asyncio.sleep(0)
     raise AssertionError(f"Kein Subscription-Waiter für MID {mid}")
+
+
+async def _wait_for_messages(messages, expected_count):
+    for _attempt in range(50):
+        if len(messages) >= expected_count:
+            return
+        await asyncio.sleep(0)
+    raise AssertionError(
+        f"Erwartete {expected_count} Nachrichten, erhielt {len(messages)}"
+    )
 
 
 async def test_initial_mqtt_outage_recovers_without_entry_reload(hass):
@@ -460,6 +471,90 @@ async def test_mqtt_event_processor_stops_cleanly(hass):
 
     assert task.done() is True
     assert service._event_processor_task is None
+
+
+def test_oversized_mqtt_message_is_rejected_before_scheduling(hass, mocker):
+    service = MQTTService(hass, Mock(), "entry-a")
+    service._callbacks["topic/a"] = AsyncMock()
+    schedule = mocker.patch.object(hass.loop, "call_soon_threadsafe")
+    message = Mock(
+        topic="topic/a",
+        payload=b"x" * (MAX_MQTT_PAYLOAD_BYTES + 1),
+    )
+
+    service._on_message(Mock(), None, message)
+
+    schedule.assert_not_called()
+    assert service._pending_messages == {}
+    assert list(service._message_topics) == []
+
+
+def test_mqtt_backlog_is_bounded_by_subscribed_topics(hass, mocker):
+    service = MQTTService(hass, Mock(), "entry-a")
+    service._callbacks = {
+        "topic/a": AsyncMock(),
+        "topic/b": AsyncMock(),
+    }
+    schedule = mocker.patch.object(hass.loop, "call_soon_threadsafe")
+
+    for sequence in range(100):
+        for topic in service._callbacks:
+            service._on_message(
+                Mock(),
+                None,
+                Mock(topic=topic, payload=str(sequence).encode()),
+            )
+
+    assert len(service._pending_messages) == 2
+    assert len(service._message_topics) == 2
+    assert service._queued_message_topics == {"topic/a", "topic/b"}
+    assert schedule.call_count == 2
+
+
+async def test_mqtt_overload_keeps_latest_message_for_each_topic(hass):
+    service = MQTTService(hass, Mock(), "entry-a")
+    messages = []
+
+    async def collect(topic, payload):
+        messages.append((topic, payload))
+
+    service._callbacks = {
+        "topic/a": collect,
+        "topic/b": collect,
+    }
+    for payload in (b"old-a", b"newer-a", b"latest-a"):
+        service._on_message(
+            Mock(), None, Mock(topic="topic/a", payload=payload)
+        )
+    service._on_message(
+        Mock(), None, Mock(topic="topic/b", payload=b"latest-b")
+    )
+
+    service._start_message_processor()
+    try:
+        await _wait_for_messages(messages, 2)
+    finally:
+        await service._stop_message_processor()
+
+    assert messages == [
+        ("topic/a", b"latest-a"),
+        ("topic/b", b"latest-b"),
+    ]
+
+
+async def test_mqtt_uses_one_message_processor_task(hass, mocker):
+    service = MQTTService(hass, Mock(), "entry-a")
+    create_background_task = mocker.spy(
+        hass, "async_create_background_task"
+    )
+
+    service._start_message_processor()
+    first_task = service._message_processor_task
+    service._start_message_processor()
+
+    assert first_task is service._message_processor_task
+    assert create_background_task.call_count == 1
+    await service._stop_message_processor()
 
 
 async def test_dead_paho_loop_does_not_block_new_connect_attempt(hass):

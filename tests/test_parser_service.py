@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, Mock
 
 from custom_components.sensorbridge_partheland.parser_service import ParserService
@@ -65,3 +66,22 @@ async def test_specialized_raw_fields_are_mapped_to_api_names(hass):
     )
 
     assert parsed["sensor_data"] == {"soil_temperature": 12.4}
+
+
+async def test_parse_message_parses_json_exactly_once(hass, mocker):
+    parser = ParserService(
+        hass,
+        _config_service("senseBox", ["temperature"]),
+    )
+    loads = mocker.patch(
+        "custom_components.sensorbridge_partheland.parser_service.json.loads",
+        wraps=json.loads,
+    )
+
+    parsed = await parser.parse_message(
+        "senseBox:home/station",
+        b'{"fields":{"Temperatur":21.5}}',
+    )
+
+    assert parsed["sensor_data"] == {"temperature": 21.5}
+    loads.assert_called_once()

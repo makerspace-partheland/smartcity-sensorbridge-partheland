@@ -6,11 +6,13 @@ HA 2025 Compliant - Reine Connection-Verwaltung
 from __future__ import annotations
 
 import asyncio
+from collections import deque
+from collections.abc import Awaitable, Callable
 import logging
 import ssl
 import threading
 import uuid
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Dict, Optional
 
 import paho.mqtt.client as mqtt
 from homeassistant.core import HomeAssistant
@@ -20,6 +22,7 @@ from .const import (
     DOMAIN,
     EVENT_MQTT_CONNECTED,
     EVENT_MQTT_DISCONNECTED,
+    MAX_MQTT_PAYLOAD_BYTES,
     MQTT_VERSION,
 )
 from .interfaces import ConfigServiceProtocol, MQTTServiceProtocol
@@ -42,7 +45,9 @@ class MQTTService(MQTTServiceProtocol):
         self.entry_id = entry_id
         self.client: Optional[mqtt.Client] = None
         self._connected = False
-        self._callbacks: Dict[str, Callable[[str, Any], None]] = {}
+        self._callbacks: Dict[
+            str, Callable[[str, Any], Awaitable[None]]
+        ] = {}
         self._active_subscriptions: set[str] = set()
         self._subscription_waiters: Dict[int, asyncio.Future[bool]] = {}
         self._subscription_results: Dict[int, bool] = {}
@@ -57,6 +62,14 @@ class MQTTService(MQTTServiceProtocol):
         self._ws_path: str = "/"  # Default WebSocket path
         self._event_queue: asyncio.Queue = asyncio.Queue()
         self._event_processor_task: Optional[asyncio.Task] = None
+        self._message_lock = threading.Lock()
+        self._pending_messages: Dict[
+            str, tuple[Callable[[str, Any], Awaitable[None]], bytes]
+        ] = {}
+        self._queued_message_topics: set[str] = set()
+        self._message_topics: deque[str] = deque()
+        self._message_ready = asyncio.Event()
+        self._message_processor_task: Optional[asyncio.Task] = None
         self._ssl_context: Optional[ssl.SSLContext] = None
         self._keepalive: int = 60
         self._reconnect_min_delay: int = 1
@@ -232,6 +245,7 @@ class MQTTService(MQTTServiceProtocol):
 
             # Event-Processor starten
             self._start_event_processor()
+            self._start_message_processor()
 
             _LOGGER.debug("MQTT-Verbindung erfolgreich hergestellt")
             return True
@@ -300,6 +314,8 @@ class MQTTService(MQTTServiceProtocol):
                             self.client.loop_stop
                         )
 
+                    await self._stop_message_processor()
+
                     # Verbindung trennen
                     await self.hass.async_add_executor_job(self.client.disconnect)
 
@@ -314,14 +330,20 @@ class MQTTService(MQTTServiceProtocol):
                     self._active_subscriptions.clear()
                     self._fail_pending_subscriptions()
             else:
+                await self._stop_message_processor()
                 self._connected = False
                 self._loop_started = False
                 self._active_subscriptions.clear()
                 self._fail_pending_subscriptions()
     
-    async def subscribe(self, topic: str, callback: Callable[[str, Any], None]) -> None:
+    async def subscribe(
+        self,
+        topic: str,
+        callback: Callable[[str, Any], Awaitable[None]],
+    ) -> None:
         """Merkt ein Topic und abonniert es bei bestehender Verbindung."""
-        self._callbacks[topic] = callback
+        with self._message_lock:
+            self._callbacks[topic] = callback
         async with self._subscription_lock:
             if (
                 not self.client
@@ -416,7 +438,7 @@ class MQTTService(MQTTServiceProtocol):
         """Deabonniert ein MQTT-Topic."""
         async with self._subscription_lock:
             if not self.client or not self._connected:
-                self._callbacks.pop(topic, None)
+                self._remove_message_topic(topic)
                 self._active_subscriptions.discard(topic)
                 return
 
@@ -426,7 +448,7 @@ class MQTTService(MQTTServiceProtocol):
                 )
 
                 if result[0] == mqtt.MQTT_ERR_SUCCESS:
-                    self._callbacks.pop(topic, None)
+                    self._remove_message_topic(topic)
                     self._active_subscriptions.discard(topic)
                     _LOGGER.debug("Topic erfolgreich deabonniert: %s", topic)
                 else:
@@ -587,23 +609,41 @@ class MQTTService(MQTTServiceProtocol):
         """Callback für MQTT-Nachrichten."""
         topic = msg.topic
         payload = msg.payload
-        
-        # Debug-Logging für MQTT-Nachrichten (nur bei Debug-Level)
-        _LOGGER.debug("MQTT-Nachricht empfangen: Topic=%s, Payload-Length=%d", topic, len(payload))
-        
-        # Thread-sicher: Callback über Event Loop aufrufen
-        if topic in self._callbacks:
-            try:
-                _LOGGER.debug("Rufe Callback für Topic %s auf", topic)
-                # WICHTIG: Callback direkt aufrufen, nicht als Coroutine
-                callback = self._callbacks[topic]
-                self.hass.loop.call_soon_threadsafe(
-                    lambda: self._execute_callback_safe(callback, topic, payload)
-                )
-            except Exception as e:
-                _LOGGER.error("Fehler im Topic-Callback für %s: %s", topic, e)
-        else:
-            _LOGGER.debug("Kein Callback für Topic %s registriert", topic)
+
+        payload_length = len(payload)
+        _LOGGER.debug(
+            "MQTT-Nachricht empfangen: Topic=%s, Payload-Length=%d",
+            topic,
+            payload_length,
+        )
+        if payload_length > MAX_MQTT_PAYLOAD_BYTES:
+            _LOGGER.debug(
+                "MQTT-Nachricht für Topic %s überschreitet die zulässige Größe",
+                topic,
+            )
+            return
+
+        should_wake = False
+        with self._message_lock:
+            callback = self._callbacks.get(topic)
+            if callback is None:
+                _LOGGER.debug("Kein Callback für Topic %s registriert", topic)
+                return
+
+            replacing = topic in self._pending_messages
+            self._pending_messages[topic] = (callback, payload)
+            if topic not in self._queued_message_topics:
+                self._queued_message_topics.add(topic)
+                self._message_topics.append(topic)
+                should_wake = True
+
+        if replacing:
+            _LOGGER.debug(
+                "Ersetze wartende MQTT-Nachricht durch aktuellen Wert: %s",
+                topic,
+            )
+        if should_wake:
+            self.hass.loop.call_soon_threadsafe(self._message_ready.set)
 
     async def _resubscribe_all(self) -> bool:
         """Abonniert alle zuvor registrierten Topics nach einem Reconnect erneut."""
@@ -624,19 +664,76 @@ class MQTTService(MQTTServiceProtocol):
                     )
             return success and self.subscriptions_ready
     
-    def _execute_callback_safe(self, callback: Callable[[str, Any], None], topic: str, payload: Any) -> None:
-        """Führt Callback sicher aus (vermeidet Coroutine-Probleme)."""
+    async def _execute_callback_safe(
+        self,
+        callback: Callable[[str, Any], Awaitable[None]],
+        topic: str,
+        payload: Any,
+    ) -> None:
+        """Führt einen Message-Callback innerhalb des begrenzten Workers aus."""
         try:
-            # Prüfen ob Callback eine Coroutine ist
-            if asyncio.iscoroutinefunction(callback):
-                _LOGGER.warning("Callback für Topic %s ist eine Coroutine - wird ignoriert", topic)
-                return
-            
-            # Synchrone Callback ausführen
-            callback(topic, payload)
-            
+            await callback(topic, payload)
         except Exception as e:
             _LOGGER.error("Fehler bei Callback-Ausführung für Topic %s: %s", topic, e)
+
+    def _remove_message_topic(self, topic: str) -> None:
+        """Entfernt Callback und wartende Nachricht eines Topics."""
+        with self._message_lock:
+            self._callbacks.pop(topic, None)
+            self._pending_messages.pop(topic, None)
+            if topic in self._queued_message_topics:
+                self._queued_message_topics.discard(topic)
+                try:
+                    self._message_topics.remove(topic)
+                except ValueError:
+                    pass
+
+    def _start_message_processor(self) -> None:
+        """Startet genau einen Worker für eingehende MQTT-Nachrichten."""
+        if (
+            self._message_processor_task
+            and not self._message_processor_task.done()
+        ):
+            return
+        self._message_processor_task = self.hass.async_create_background_task(
+            self._process_messages(),
+            f"{DOMAIN} MQTT messages {self.entry_id}",
+            eager_start=False,
+        )
+
+    async def _stop_message_processor(self) -> None:
+        """Stoppt den Message-Worker und verwirft ausstehende Zustände."""
+        task = self._message_processor_task
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        if self._message_processor_task is task:
+            self._message_processor_task = None
+        with self._message_lock:
+            self._pending_messages.clear()
+            self._queued_message_topics.clear()
+            self._message_topics.clear()
+        self._message_ready.clear()
+
+    async def _process_messages(self) -> None:
+        """Verarbeitet fair höchstens eine wartende Nachricht je Topic."""
+        while True:
+            await self._message_ready.wait()
+            while True:
+                with self._message_lock:
+                    if not self._message_topics:
+                        self._message_ready.clear()
+                        break
+                    topic = self._message_topics.popleft()
+                    self._queued_message_topics.discard(topic)
+                    message = self._pending_messages.pop(topic, None)
+                if message is None:
+                    continue
+                callback, payload = message
+                await self._execute_callback_safe(callback, topic, payload)
     
     def _queue_event(self, event_type: str, event_data: Any) -> None:
         """Thread-sicher: Event in Queue einreihen."""

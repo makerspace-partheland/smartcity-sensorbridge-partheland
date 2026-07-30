@@ -390,7 +390,6 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             
             for topic in self._mqtt_topics:
                 _LOGGER.debug("Abonniere Topic: %s", topic)
-                # Synchrone Wrapper-Funktion für asynchronen Handler
                 await self.mqtt_service.subscribe(topic, self._mqtt_message_wrapper)
             
             _LOGGER.info("MQTT-Topics abonniert: %d Topics", len(self._mqtt_topics))
@@ -399,13 +398,9 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             await self.error_handler.handle_error(e, "Subscribe to Topics")
             raise
     
-    def _mqtt_message_wrapper(self, topic: str, payload: Any) -> None:
-        """Synchrone Wrapper-Funktion für MQTT-Nachrichten."""
-        try:
-            # Asynchronen Handler über Event Loop aufrufen
-            self.hass.async_create_task(self._handle_mqtt_message(topic, payload))
-        except Exception as e:
-            _LOGGER.error("Fehler beim Aufrufen des MQTT-Handlers für Topic %s: %s", topic, e)
+    async def _mqtt_message_wrapper(self, topic: str, payload: Any) -> None:
+        """Verarbeitet eine vom MQTT-Worker zugelassene Nachricht."""
+        await self._handle_mqtt_message(topic, payload)
     
     async def _unsubscribe_from_topics(self) -> None:
         """Kündigt MQTT-Topics."""

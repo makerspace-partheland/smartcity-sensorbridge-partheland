@@ -30,12 +30,15 @@ class ParserService(ParserServiceProtocol):
     async def parse_message(self, topic: str, payload: Any) -> Optional[Dict[str, Any]]:
         """Parst eine MQTT-Nachricht."""
         try:
-            # Message validieren
-            if not await self.validate_message(topic, payload):
+            if not self._is_valid_topic(topic):
+                _LOGGER.debug("Ungültiges Topic-Pattern: %s", topic)
                 return None
-            
-            # Sensordaten extrahieren
-            sensor_data = await self.get_sensor_data(topic, payload)
+
+            data = self._decode_payload(topic, payload)
+            if data is None:
+                return None
+
+            sensor_data = await self._get_sensor_data(topic, data)
             if not sensor_data:
                 return None
             
@@ -48,62 +51,59 @@ class ParserService(ParserServiceProtocol):
     
     async def validate_message(self, topic: str, payload: Any) -> bool:
         """Validiert eine MQTT-Nachricht."""
-        try:
-            # Payload validieren
-            if not payload:
-                _LOGGER.debug("Leere Payload für Topic %s", topic)
-                return False
-            
-            # Payload-Typ konvertieren
-            if isinstance(payload, bytes):
-                try:
-                    payload_str = payload.decode('utf-8')
-                except UnicodeDecodeError:
-                    _LOGGER.debug("Ungültige UTF-8 Payload für Topic %s", topic)
-                    return False
-            elif isinstance(payload, str):
-                payload_str = payload
-            else:
-                _LOGGER.debug("Ungültiger Payload-Typ für Topic %s: %s", topic, type(payload))
-                return False
-            
-            # JSON validieren
-            try:
-                json.loads(payload_str)
-            except json.JSONDecodeError:
-                _LOGGER.debug("Ungültiges JSON für Topic %s", topic)
-                return False
-            
-            # Topic-Pattern validieren
-            if not self._is_valid_topic(topic):
-                _LOGGER.debug("Ungültiges Topic-Pattern: %s", topic)
-                return False
-            
-            return True
-            
-        except Exception as e:
-            _LOGGER.error("Fehler bei der Message-Validierung: %s", e)
+        if not self._is_valid_topic(topic):
+            _LOGGER.debug("Ungültiges Topic-Pattern: %s", topic)
             return False
+        return self._decode_payload(topic, payload) is not None
     
     async def get_sensor_data(self, topic: str, payload: Any) -> Optional[Dict[str, Any]]:
         """Extrahiert Sensordaten aus einer Nachricht."""
+        data = self._decode_payload(topic, payload)
+        if data is None:
+            return None
+        return await self._get_sensor_data(topic, data)
+
+    def _decode_payload(
+        self, topic: str, payload: Any
+    ) -> Optional[Dict[str, Any]]:
+        """Dekodiert und parst eine MQTT-Nutzlast genau einmal."""
         try:
-            # Payload-Typ konvertieren (wie in validate_message)
+            if not payload:
+                _LOGGER.debug("Leere Payload für Topic %s", topic)
+                return None
             if isinstance(payload, bytes):
                 try:
-                    payload_str = payload.decode('utf-8')
+                    payload_str = payload.decode("utf-8")
                 except UnicodeDecodeError:
-                    _LOGGER.error("Ungültige UTF-8 Payload für Topic %s", topic)
+                    _LOGGER.debug("Ungültige UTF-8 Payload für Topic %s", topic)
                     return None
             elif isinstance(payload, str):
                 payload_str = payload
             else:
-                _LOGGER.error("Ungültiger Payload-Typ für Topic %s: %s", topic, type(payload))
+                _LOGGER.debug(
+                    "Ungültiger Payload-Typ für Topic %s: %s",
+                    topic,
+                    type(payload),
+                )
                 return None
-            
-            # Payload parsen
+
             data = json.loads(payload_str)
-            
+            if not isinstance(data, dict):
+                _LOGGER.debug("JSON-Objekt für Topic %s erwartet", topic)
+                return None
+            return data
+        except json.JSONDecodeError:
+            _LOGGER.debug("Ungültiges JSON für Topic %s", topic)
+            return None
+        except Exception as e:
+            _LOGGER.error("Fehler beim Dekodieren der Sensordaten: %s", e)
+            return None
+
+    async def _get_sensor_data(
+        self, topic: str, data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Extrahiert Sensordaten aus einem bereits geparsten JSON-Objekt."""
+        try:
             # Parsing-Konfiguration laden
             if not self._parsing_config:
                 self._parsing_config = await self.config_service.get_parsing_config()

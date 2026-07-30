@@ -5,7 +5,8 @@ HA 2025 Compliant mit Protocol-Klassen für Dependency Injection
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol
+from collections.abc import Awaitable, Callable
+from typing import Any, Dict, Iterable, List, Optional, Protocol
 
 
 class ConfigServiceProtocol(Protocol):
@@ -78,7 +79,7 @@ class MQTTServiceProtocol(Protocol):
         ...
     
     async def subscribe(
-        self, topic: str, callback: Callable[[str, Any], None]
+        self, topic: str, callback: Callable[[str, Any], Awaitable[None]]
     ) -> None:
         """Abonniert ein MQTT-Topic."""
         ...
