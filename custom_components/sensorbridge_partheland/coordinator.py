@@ -137,7 +137,7 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
                 )
 
             try:
-                data = await self._async_update_data()
+                data = await self._async_update_data(initial=True)
             except UpdateFailed as err:
                 self.async_set_update_error(err)
             else:
@@ -247,7 +247,7 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
         """Setter für die Daten (wird von DataUpdateCoordinator verwendet)."""
         self._sensor_data = value
     
-    async def _async_update_data(self) -> Dict[str, Any]:
+    async def _async_update_data(self, *, initial: bool = False) -> Dict[str, Any]:
         """Health Check und Fallback-Mechanismus (MQTT-Daten kommen Push-basiert)."""
         _LOGGER.debug("Führe Health Check durch")
 
@@ -255,11 +255,18 @@ class SensorBridgeCoordinator(DataUpdateCoordinator, CoordinatorProtocol):
             return self._sensor_data.copy()
 
         if not self.mqtt_service.is_connected:
-            _LOGGER.warning("MQTT-Verbindung nicht verfügbar")
-            if not await self.mqtt_service.connect():
+            _LOGGER.debug("MQTT-Verbindung nicht aktiv; starte Verbindung")
+            connection_started = await self.mqtt_service.connect()
+            if not connection_started:
+                _LOGGER.warning("MQTT-Verbindung nicht verfügbar")
                 raise UpdateFailed("MQTT nicht verbunden")
 
         if not self.mqtt_service.is_connected:
+            if initial:
+                _LOGGER.debug(
+                    "MQTT-Verbindung wird hergestellt; warte auf Connect-Event"
+                )
+                return self._sensor_data.copy()
             raise UpdateFailed("MQTT-Verbindung wird hergestellt")
 
         if not self.mqtt_service.subscriptions_ready:

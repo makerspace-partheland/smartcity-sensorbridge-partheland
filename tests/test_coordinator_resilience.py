@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from contextlib import suppress
 from unittest.mock import AsyncMock, Mock, call, patch
@@ -14,6 +15,7 @@ from custom_components.sensorbridge_partheland.const import (
     CONF_SELECTED_DEVICES,
     CONF_SELECTED_MEDIAN_ENTITIES,
     DOMAIN,
+    EVENT_MQTT_CONNECTED,
     MAX_MQTT_PAYLOAD_BYTES,
 )
 from custom_components.sensorbridge_partheland.coordinator import (
@@ -68,6 +70,16 @@ class RecoveringMQTTService:
         return self._connected and set(self.callbacks).issubset(
             self.active_subscriptions
         )
+
+
+class ConnectingMQTTService(RecoveringMQTTService):
+    async def connect(self) -> bool:
+        self.connection_attempts += 1
+        return True
+
+    def finish_connection(self) -> None:
+        self._connected = True
+        self.active_subscriptions = set(self.callbacks)
 
 
 def _coordinator(hass, entry, config_service, mqtt_service):
@@ -139,6 +151,52 @@ async def test_initial_mqtt_outage_recovers_without_entry_reload(hass):
     assert coordinator.last_update_success is True
     assert mqtt_service.connection_attempts == 2
     assert mqtt_service.active_subscriptions == {"topic/a"}
+    await coordinator.async_shutdown()
+
+
+async def test_initial_mqtt_connection_pending_recovers_without_error(hass, caplog):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_SELECTED_DEVICES: ["device-a"]},
+    )
+    entry.add_to_hass(hass)
+    config_service = Mock(
+        get_device_by_id=AsyncMock(return_value={"topic_pattern": "topic/a"}),
+        get_mqtt_config=AsyncMock(return_value={"keepalive": 60}),
+        get_availability_config=AsyncMock(return_value={}),
+    )
+    mqtt_service = ConnectingMQTTService()
+    coordinator = _coordinator(hass, entry, config_service, mqtt_service)
+    caplog.set_level(
+        logging.ERROR,
+        logger="custom_components.sensorbridge_partheland.coordinator",
+    )
+
+    await coordinator.async_start()
+
+    assert coordinator.last_update_success is True
+    assert mqtt_service.connection_attempts == 1
+    assert mqtt_service.callbacks == {"topic/a": coordinator._mqtt_message_wrapper}
+    assert not any(
+        "MQTT-Verbindung wird hergestellt" in record.getMessage()
+        for record in caplog.records
+    )
+
+    updates = []
+    remove_listener = coordinator.async_add_listener(
+        lambda: updates.append(coordinator.last_update_success)
+    )
+    mqtt_service.finish_connection()
+    hass.bus.async_fire(
+        EVENT_MQTT_CONNECTED,
+        {"entry_id": entry.entry_id},
+    )
+    await hass.async_block_till_done()
+
+    assert mqtt_service.active_subscriptions == {"topic/a"}
+    assert updates == [True]
+    assert coordinator.last_update_success is True
+    remove_listener()
     await coordinator.async_shutdown()
 
 
