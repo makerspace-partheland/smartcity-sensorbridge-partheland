@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 import threading
 from contextlib import suppress
 from unittest.mock import AsyncMock, Mock, call, patch
@@ -121,6 +122,15 @@ async def _wait_for_messages(messages, expected_count):
     raise AssertionError(
         f"Erwartete {expected_count} Nachrichten, erhielt {len(messages)}"
     )
+
+
+def test_mqtt_ssl_context_verifies_broker_identity(hass):
+    service = MQTTService(hass, Mock(), "entry-a")
+
+    context = service._create_ssl_context()
+
+    assert context.check_hostname is True
+    assert context.verify_mode == ssl.CERT_REQUIRED
 
 
 async def test_initial_mqtt_outage_recovers_without_entry_reload(hass):

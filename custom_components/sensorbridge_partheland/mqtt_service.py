@@ -263,10 +263,7 @@ class MQTTService(MQTTServiceProtocol):
     
     def _create_ssl_context(self) -> ssl.SSLContext:
         """Erstellt SSL-Context im Executor (vermeidet Blocking im Event Loop)."""
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        return context
+        return ssl.create_default_context()
     
     def _parse_broker_url(self, broker_url: str) -> tuple[str, int]:
         """Parst die Broker-URL und gibt Host und Port zurück."""
