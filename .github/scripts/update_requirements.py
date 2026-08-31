@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -43,6 +44,7 @@ REQ_FILES = [
 ]
 
 MANIFEST_PATH = "custom_components/sensorbridge_partheland/manifest.json"
+MIN_RELEASE_AGE_DAYS = 7
 
 
 PYTEST_HA_BASE_URL = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master"
@@ -176,7 +178,34 @@ def fetch_pytest_ha_version() -> Optional[str]:
         return None
 
 
-def fetch_latest_version(package: str) -> Optional[str]:
+def eligible_stable_versions(
+    releases: Dict[str, List[dict]], now: Optional[datetime] = None
+) -> List[str]:
+    """Return stable versions whose published files are at least seven days old."""
+    reference_time = now or datetime.now(timezone.utc)
+    cutoff = reference_time - timedelta(days=MIN_RELEASE_AGE_DAYS)
+    eligible: List[str] = []
+
+    for version, files in releases.items():
+        if not is_stable_version(version):
+            continue
+
+        upload_times: List[datetime] = []
+        for release_file in files:
+            if release_file.get("yanked"):
+                continue
+            timestamp = release_file.get("upload_time_iso_8601")
+            if not timestamp:
+                continue
+            upload_times.append(datetime.fromisoformat(timestamp.replace("Z", "+00:00")))
+
+        if upload_times and max(upload_times) <= cutoff:
+            eligible.append(version)
+
+    return eligible
+
+
+def fetch_package_releases(package: str) -> Optional[Dict[str, List[dict]]]:
     url = f"https://pypi.org/pypi/{package}/json"
     try:
         with urllib.request.urlopen(url, timeout=20) as resp:
@@ -184,8 +213,22 @@ def fetch_latest_version(package: str) -> Optional[str]:
     except Exception:
         return None
 
-    releases: Dict[str, List[dict]] = data.get("releases", {})
-    stable_versions = [v for v in releases.keys() if is_stable_version(v)]
+    return data.get("releases", {})
+
+
+def release_is_eligible(package: str, version: str) -> bool:
+    releases = fetch_package_releases(package)
+    if releases is None:
+        return False
+    return version in eligible_stable_versions(releases)
+
+
+def fetch_latest_version(package: str) -> Optional[str]:
+    releases = fetch_package_releases(package)
+    if releases is None:
+        return None
+
+    stable_versions = eligible_stable_versions(releases)
     if not stable_versions:
         return None
     latest = max(stable_versions, key=numeric_tuple)
@@ -232,6 +275,13 @@ def process_requirements_file(
             if target_version == req.version:
                 updated_lines.append(line)
             elif numeric_tuple(target_version) >= numeric_tuple(req.version):
+                if not release_is_eligible(base_pkg, target_version):
+                    print(
+                        f"Skipping {base_pkg} {target_version}: "
+                        f"release is less than {MIN_RELEASE_AGE_DAYS} days old or unavailable"
+                    )
+                    updated_lines.append(line)
+                    continue
                 new_line = rebuild_line(req, target_version)
                 if new_line != line:
                     updated_lines.append(new_line)
@@ -264,6 +314,13 @@ def process_requirements_file(
             if target_version == req.version:
                 updated_lines.append(line)
             elif numeric_tuple(target_version) >= numeric_tuple(req.version):
+                if not release_is_eligible(base_pkg, target_version):
+                    print(
+                        f"Skipping {base_pkg} {target_version}: "
+                        f"release is less than {MIN_RELEASE_AGE_DAYS} days old or unavailable"
+                    )
+                    updated_lines.append(line)
+                    continue
                 new_line = rebuild_line(req, target_version)
                 if new_line != line:
                     updated_lines.append(new_line)
