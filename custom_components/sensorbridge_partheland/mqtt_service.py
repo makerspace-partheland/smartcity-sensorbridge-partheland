@@ -190,9 +190,9 @@ class MQTTService(MQTTServiceProtocol):
                     self.client.ws_set_options(path=self._ws_path)
                     self.client.tls_set_context(self._ssl_context)
                     _LOGGER.debug("WebSocket-Verbindung mit SSL-Context konfiguriert")
-                except Exception as e:
-                    _LOGGER.warning("Fehler bei WebSocket-Konfiguration: %s", e)
-                    _LOGGER.info("Versuche Fallback-Verbindung ohne spezielle WebSocket-Konfiguration")
+                except Exception as tls_error:
+                    _LOGGER.error("TLS-Konfiguration fehlgeschlagen: %s", tls_error)
+                    return False
 
             # Verbindungsoptionen setzen
             self.client.reconnect_delay_set(min_delay=self._reconnect_min_delay, max_delay=self._reconnect_max_delay)
