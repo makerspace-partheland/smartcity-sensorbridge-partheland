@@ -133,6 +133,28 @@ def test_mqtt_ssl_context_verifies_broker_identity(hass):
     assert context.verify_mode == ssl.CERT_REQUIRED
 
 
+async def test_mqtt_tls_configuration_failure_stops_before_connect(hass):
+    client = Mock()
+    client.tls_set_context.side_effect = ssl.SSLError(
+        "TLS-Konfiguration fehlgeschlagen"
+    )
+    config_service = Mock(
+        get_mqtt_config=AsyncMock(
+            return_value={"broker_url": "wss://mqtt.example.test/mqtt"}
+        )
+    )
+    service = MQTTService(hass, config_service, "entry-a")
+
+    with patch(
+        "custom_components.sensorbridge_partheland.mqtt_service.mqtt.Client",
+        return_value=client,
+    ):
+        assert await service.connect() is False
+
+    client.connect.assert_not_called()
+    client.loop_start.assert_not_called()
+
+
 async def test_initial_mqtt_outage_recovers_without_entry_reload(hass):
     entry = MockConfigEntry(
         domain=DOMAIN,
