@@ -95,16 +95,15 @@ def test_update_uses_eligible_test_stack_when_upstream_is_fresh(monkeypatch, tmp
         encoding="utf-8",
     )
 
-    assert UPDATE_REQUIREMENTS.main() == 0
+    assert UPDATE_REQUIREMENTS.main("2026.10.3") == 0
     assert requirements.read_text() == (
         f"homeassistant >= 2026.10.2\n{package} >= 0.13.373\n"
     )
     assert "Python 3.14.2 oder neuer" in readme.read_text()
     assert "Home Assistant 2026.10.2 oder neuer" in readme.read_text()
-    assert "Zuletzt erfolgreich getestet mit Home Assistant 2026.10.2." in readme.read_text()
-    assert "2026.10.3" not in readme.read_text()
+    assert "Zuletzt erfolgreich getestet mit Home Assistant 2026.10.3." in readme.read_text()
     before = (requirements.read_bytes(), readme.read_bytes())
-    assert UPDATE_REQUIREMENTS.main() == 0
+    assert UPDATE_REQUIREMENTS.main("2026.10.3") == 0
     assert before == (requirements.read_bytes(), readme.read_bytes())
 
 
@@ -122,6 +121,25 @@ def test_missing_test_stack_metadata_stops_before_editing(monkeypatch, tmp_path,
         UPDATE_REQUIREMENTS.main()
 
     assert requirements.read_text() == original
+
+
+@pytest.mark.parametrize("tested_version", [None, "2026.10.1"])
+def test_dependency_update_preserves_newer_successful_test_result(monkeypatch, tmp_path, tested_version):
+    monkeypatch.chdir(tmp_path)
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "- Python 3.13.2 oder neuer\n- Home Assistant 2026.9.3 oder neuer\n\n"
+        "## Updates\n\nZuletzt erfolgreich getestet mit Home Assistant 2026.10.3.\n",
+        encoding="utf-8",
+    )
+
+    if tested_version is None:
+        UPDATE_REQUIREMENTS.update_readme("2026.10.2", [], "3.14.2")
+    else:
+        UPDATE_REQUIREMENTS.update_readme("2026.10.2", [], "3.14.2", tested_version)
+
+    assert "Home Assistant 2026.10.2 oder neuer" in readme.read_text()
+    assert "Zuletzt erfolgreich getestet mit Home Assistant 2026.10.3." in readme.read_text()
 
 
 @pytest.mark.parametrize("metadata", [{}, {"requires_python": ">=3.14.2,<3.15"}, None])

@@ -22,6 +22,7 @@ No third-party dependencies required (stdlib only).
 from __future__ import annotations
 
 import json
+import argparse
 import os
 import re
 import sys
@@ -378,7 +379,8 @@ def extract_homeassistant_version(path: str) -> Optional[str]:
 
 
 def update_readme(
-    homeassistant_version: Optional[str], changes: List[str], python_version: str
+    homeassistant_version: Optional[str], changes: List[str], python_version: str,
+    tested_homeassistant_version: Optional[str] = None,
 ) -> None:
     """Update README with the documented Home Assistant compatibility version."""
     if not homeassistant_version or not README_PATH.exists():
@@ -402,28 +404,20 @@ def update_readme(
         text = new_text
         updated = True
 
-    compat_line = f"Zuletzt erfolgreich getestet mit Home Assistant {homeassistant_version}."
-
-    def _replace_compat(_: re.Match[str]) -> str:
-        return compat_line
-
-    new_text, count = README_COMPAT_PATTERN.subn(_replace_compat, text, count=1)
-    if count and new_text != text:
-        text = new_text
-        updated = True
-    else:
-        marker = (
-            "Die Integration wird durch die Automatisierung eigenständig gepflegt und "
-            "führt erfolgreiche Abhängigkeits-PRs nach bestandenem CI- und "
-            "HA-Kompatibilitätscheck automatisch zusammen."
-        )
-        if marker in text and compat_line not in text:
-            text = text.replace(marker, f"{marker} {compat_line}", 1)
-            updated = True
-        elif compat_line not in text:
-            updates_heading = "## Updates\n\n"
-            if updates_heading in text:
-                text = text.replace(updates_heading, f"{updates_heading}{compat_line}\n\n", 1)
+    # Only a successful compatibility run may advance the documented test result.
+    if tested_homeassistant_version:
+        compat_match = README_COMPAT_PATTERN.search(text)
+        if not compat_match or numeric_tuple(tested_homeassistant_version) >= numeric_tuple(compat_match.group(2)):
+            compat_line = f"Zuletzt erfolgreich getestet mit Home Assistant {tested_homeassistant_version}."
+            if compat_match:
+                new_text = README_COMPAT_PATTERN.sub(lambda _: compat_line, text, count=1)
+            else:
+                new_text = text
+                updates_heading = "## Updates\n\n"
+                if updates_heading in text:
+                    new_text = text.replace(updates_heading, f"{updates_heading}{compat_line}\n\n", 1)
+            if new_text != text:
+                text = new_text
                 updated = True
 
     if updated:
@@ -483,8 +477,10 @@ def process_manifest(path: str, changes: List[str]) -> None:
             fh.write("\n")
 
 
-def main() -> int:
+def main(tested_homeassistant_version: Optional[str] = None) -> int:
     changes: List[str] = []
+    if tested_homeassistant_version and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", tested_homeassistant_version):
+        raise SystemExit("The tested Home Assistant version must be a stable X.Y.Z release.")
 
     print('Selecting an age-eligible pytest-homeassistant-custom-component release...')
     pytest_ha_version = fetch_pytest_ha_version()
@@ -523,7 +519,7 @@ def main() -> int:
     if ha_version is None:
         ha_version = extract_homeassistant_version('requirements.txt')
     if ha_version:
-        update_readme(ha_version, changes, python_versions[ha_version])
+        update_readme(ha_version, changes, python_versions[ha_version], tested_homeassistant_version)
 
     if changes:
         print("Dependency updates applied:")
@@ -536,4 +532,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    parser = argparse.ArgumentParser(description="Update dependency requirements and README versions.")
+    parser.add_argument(
+        "--tested-homeassistant-version",
+        help="Home Assistant version confirmed by a successful compatibility run.",
+    )
+    args = parser.parse_args()
+    raise SystemExit(main(args.tested_homeassistant_version))
