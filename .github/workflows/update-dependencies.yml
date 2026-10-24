@@ -9,11 +9,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
+  compatibility:
+    uses: ./.github/workflows/post-merge-ha-test.yml
+    with:
+      force-test: true
+
   update:
+    needs: compatibility
+    # Nur vertrauenswürdiges main darf mit dem bestehenden Token einen PR schreiben.
+    # Der wiederverwendete HA-Test erhält weder Schreibrechte noch Secrets.
+    if: github.ref == 'refs/heads/main' && needs.compatibility.outputs.tested_homeassistant_version != ''
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Repository auschecken
@@ -47,8 +58,10 @@ jobs:
 
       - name: Requirements aktualisieren (nur patch/minor)
         id: update-deps
+        env:
+          TESTED_HOMEASSISTANT_VERSION: ${{ needs.compatibility.outputs.tested_homeassistant_version }}
         run: |
-          python .github/scripts/update_requirements.py
+          python .github/scripts/update_requirements.py --tested-homeassistant-version "$TESTED_HOMEASSISTANT_VERSION"
           if git diff --unified=0 -- requirements_test.txt | grep -Eq '^[+-]homeassistant[[:space:]]'; then
             HA_VERSION=$(grep "^homeassistant" requirements_test.txt | sed -E 's/^[^#]*homeassistant[[:space:]]*(==|>=)[[:space:]]*//')
             echo "ha_updated=true" >> $GITHUB_OUTPUT

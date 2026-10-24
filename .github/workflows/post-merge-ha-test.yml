@@ -9,6 +9,16 @@ on:
     - cron: '0 3 * * 5' # Freitags 03:00 UTC (05:00 CET)
     - cron: '0 4 * * 5' # Freitags 04:00 UTC (05:00 CEST)
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      force-test:
+        description: Kompatibilität unabhängig von Uhrzeit und Dateidiff prüfen
+        type: boolean
+        default: false
+    outputs:
+      tested_homeassistant_version:
+        description: Home-Assistant-Version aus einem erfolgreichen Testlauf
+        value: ${{ jobs.ha-compatibility-test.outputs.tested_homeassistant_version }}
 
 permissions:
   contents: read
@@ -16,6 +26,8 @@ permissions:
 jobs:
   ha-compatibility-test:
     runs-on: ubuntu-latest
+    outputs:
+      tested_homeassistant_version: ${{ steps.tests.outputs.tested_homeassistant_version }}
 
     steps:
       - name: Repository auschecken
@@ -26,10 +38,16 @@ jobs:
 
       - name: Prüfe ob HA-Test nötig ist
         id: check-needed
+        env:
+          FORCE_TEST: ${{ inputs.force-test || false }}
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
+          if [ "${FORCE_TEST}" = "true" ]; then
+            echo "test_needed=true" >> "${GITHUB_OUTPUT}"
+            echo "Aufruf für die wöchentliche Aktualisierung - HA-Test wird ausgeführt"
+            exit 0
+          elif [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
             HOUR=$(TZ=Europe/Berlin date +'%H')
             if [ "$HOUR" != "05" ]; then
               echo "test_needed=false" >> "${GITHUB_OUTPUT}"
@@ -135,7 +153,14 @@ jobs:
         id: tests
         env:
           PYTHONPATH: ${{ github.workspace }}
+          EXPECTED_HOMEASSISTANT_VERSION: ${{ steps.test-stack.outputs.homeassistant_version }}
         run: |
+          set -euo pipefail
+          INSTALLED_HOMEASSISTANT_VERSION=$(python -c "from importlib.metadata import version; print(version('homeassistant'))")
+          if [ "$INSTALLED_HOMEASSISTANT_VERSION" != "$EXPECTED_HOMEASSISTANT_VERSION" ]; then
+            echo "Installierte Home-Assistant-Version stimmt nicht mit dem Testziel überein"
+            exit 1
+          fi
           set +e
           export PYTHONPATH="${GITHUB_WORKSPACE}:${PYTHONPATH}"
           python -m pytest -v --tb=short -k "not slow" --disable-warnings --strict-markers
@@ -144,6 +169,7 @@ jobs:
 
           if [ $TEST_RESULT -eq 0 ]; then
             echo "test_status=success" >> "${GITHUB_OUTPUT}"
+            echo "tested_homeassistant_version=$INSTALLED_HOMEASSISTANT_VERSION" >> "${GITHUB_OUTPUT}"
             echo "test_summary=Alle Tests erfolgreich mit HA ${{ steps.test-stack.outputs.homeassistant_version }}" >> "${GITHUB_OUTPUT}"
           elif [ $TEST_RESULT -eq 5 ]; then
             echo "test_status=no-tests" >> "${GITHUB_OUTPUT}"
@@ -155,7 +181,7 @@ jobs:
           fi
 
       - name: Erfolg dokumentieren
-        if: steps.check-needed.outputs.test_needed == 'true' && (steps.tests.outputs.test_status == 'success' || steps.tests.outputs.test_status == 'no-tests')
+        if: steps.tests.outputs.test_status == 'success'
         run: |
           echo "Home Assistant ${{ steps.test-stack.outputs.homeassistant_version }} Kompatibilitätstest erfolgreich"
-          echo "Alle Tests bestanden oder nicht erforderlich"
+          echo "Alle Tests bestanden"
