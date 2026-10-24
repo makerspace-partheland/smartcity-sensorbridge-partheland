@@ -47,14 +47,15 @@ MANIFEST_PATH = "custom_components/sensorbridge_partheland/manifest.json"
 MIN_RELEASE_AGE_DAYS = 7
 
 
-PYTEST_HA_BASE_URL = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master"
-PYTEST_HA_REQUIREMENTS_URL = f"{PYTEST_HA_BASE_URL}/requirements_test.txt"
-PYTEST_HA_VERSION_URL = f"{PYTEST_HA_BASE_URL}/version"
+PYTEST_HA_PACKAGE = "pytest-homeassistant-custom-component"
 PYTEST_HA_DEPENDENT_PACKAGES: set[str] = set()
 
 README_PATH = Path("README.md")
 README_VERSION_PATTERN = re.compile(
     r"(Home Assistant\s+)([0-9]+(?:\.[0-9]+)*)(\s+oder neuer)"
+)
+README_PYTHON_PATTERN = re.compile(
+    r"(Python\s+)([0-9]+(?:\.[0-9]+)*)(\s+oder neuer)"
 )
 README_COMPAT_PATTERN = re.compile(
     r"(Zuletzt erfolgreich getestet mit Home Assistant )([0-9]+(?:\.[0-9]+)*)(\.)$",
@@ -140,26 +141,20 @@ def update_type(old: str, new: str) -> str:
     return "patch"
 
 
-def fetch_pytest_ha_requirements() -> Dict[str, str]:
-    """Fetch and parse pytest-homeassistant-custom-component requirements."""
-    global PYTEST_HA_DEPENDENT_PACKAGES
+def fetch_package_info(package: str, version: str) -> dict:
+    """Read dependency metadata for one published release without executing it."""
+    url = f"https://pypi.org/pypi/{package}/{version}/json"
+    with urllib.request.urlopen(url, timeout=20) as resp:
+        return json.load(resp)["info"]
 
-    try:
-        with urllib.request.urlopen(PYTEST_HA_REQUIREMENTS_URL, timeout=20) as resp:
-            content = resp.read().decode('utf-8')
-    except Exception:
-        return {}
+
+def fetch_pytest_ha_requirements(version: str) -> Dict[str, str]:
+    """Read requirements belonging to the selected, age-eligible PHACC release."""
+    PYTEST_HA_DEPENDENT_PACKAGES.clear()
+    info = fetch_package_info(PYTEST_HA_PACKAGE, version)
 
     requirements: Dict[str, str] = {}
-    PYTEST_HA_DEPENDENT_PACKAGES.clear()
-
-    for raw_line in content.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith('#'):
-            continue
-        if line.startswith('-') or line.lower().startswith('r '):
-            continue
-
+    for line in info.get("requires_dist") or []:
         req = parse_requirement_line(line)
         if req:
             package_name = req.package.lower()
@@ -170,12 +165,8 @@ def fetch_pytest_ha_requirements() -> Dict[str, str]:
 
 
 def fetch_pytest_ha_version() -> Optional[str]:
-    """Fetch the pytest-homeassistant-custom-component version from GitHub."""
-    try:
-        with urllib.request.urlopen(PYTEST_HA_VERSION_URL, timeout=20) as resp:
-            return resp.read().decode("utf-8").strip()
-    except Exception:
-        return None
+    """Select the newest stable PHACC release that meets the minimum age."""
+    return fetch_latest_version(PYTEST_HA_PACKAGE)
 
 
 def eligible_stable_versions(
@@ -287,7 +278,7 @@ def process_requirements_file(
                     updated_lines.append(new_line)
                     file_changed = True
                     changes.append(
-                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (from pytest-homeassistant-custom-component GitHub repo)"
+                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (published PHACC release)"
                     )
                 else:
                     updated_lines.append(line)
@@ -297,7 +288,7 @@ def process_requirements_file(
 
         if base_pkg in PYTEST_HA_DEPENDENT_PACKAGES and base_pkg in pytest_ha_reqs:
             target_version = pytest_ha_reqs[base_pkg]
-            target_source = "from pytest-homeassistant-custom-component GitHub repo"
+            target_source = "published PHACC release"
 
             if base_pkg == "homeassistant" and is_homeassistant_beta(target_version):
                 stable_homeassistant = fetch_latest_version(base_pkg)
@@ -386,7 +377,9 @@ def extract_homeassistant_version(path: str) -> Optional[str]:
     return None
 
 
-def update_readme(homeassistant_version: Optional[str], changes: List[str]) -> None:
+def update_readme(
+    homeassistant_version: Optional[str], changes: List[str], python_version: str
+) -> None:
     """Update README with the documented Home Assistant compatibility version."""
     if not homeassistant_version or not README_PATH.exists():
         return
@@ -398,6 +391,13 @@ def update_readme(homeassistant_version: Optional[str], changes: List[str]) -> N
         return f"{match.group(1)}{homeassistant_version}{match.group(3)}"
 
     new_text, count = README_VERSION_PATTERN.subn(_replace_version, text, count=1)
+    if count and new_text != text:
+        text = new_text
+        updated = True
+
+    new_text, count = README_PYTHON_PATTERN.subn(
+        lambda match: f"{match.group(1)}{python_version}{match.group(3)}", text, count=1
+    )
     if count and new_text != text:
         text = new_text
         updated = True
@@ -486,18 +486,34 @@ def process_manifest(path: str, changes: List[str]) -> None:
 def main() -> int:
     changes: List[str] = []
 
-    print('Fetching pytest-homeassistant-custom-component requirements...')
-    pytest_ha_reqs = fetch_pytest_ha_requirements()
+    print('Selecting an age-eligible pytest-homeassistant-custom-component release...')
     pytest_ha_version = fetch_pytest_ha_version()
-    if pytest_ha_reqs:
-        print(f"Loaded {len(pytest_ha_reqs)} requirements from pytest-homeassistant-custom-component")
-        print(f"Tracking {len(PYTEST_HA_DEPENDENT_PACKAGES)} packages for dependency alignment")
-    else:
-        print('Warning: Could not fetch pytest-homeassistant-custom-component requirements')
-    if pytest_ha_version:
-        print(f"Loaded pytest-homeassistant-custom-component version {pytest_ha_version} from GitHub")
-    else:
-        print('Warning: Could not fetch pytest-homeassistant-custom-component version from GitHub')
+    if not pytest_ha_version:
+        raise SystemExit("No age-eligible PHACC release available; files were not changed.")
+    pytest_ha_reqs = fetch_pytest_ha_requirements(pytest_ha_version)
+    if "homeassistant" not in pytest_ha_reqs:
+        raise SystemExit("Selected PHACC release has no Home Assistant requirement; files were not changed.")
+    print(f"Loaded {len(pytest_ha_reqs)} requirements from PHACC {pytest_ha_version}")
+
+    target_ha = pytest_ha_reqs["homeassistant"]
+    if is_homeassistant_beta(target_ha):
+        target_ha = fetch_latest_version("homeassistant")
+        if not target_ha:
+            raise SystemExit("No age-eligible stable Home Assistant release available; files were not changed.")
+        pytest_ha_reqs["homeassistant"] = target_ha
+
+    # Validate metadata for both the existing and candidate versions before any writes.
+    # An existing newer requirement may be retained by process_requirements_file.
+    ha_versions = {extract_homeassistant_version(path) for path in REQ_FILES}
+    ha_versions.discard(None)
+    ha_versions.add(target_ha)
+    python_versions: Dict[str, str] = {}
+    for version in sorted(ha_versions):
+        python_requires = fetch_package_info("homeassistant", version).get("requires_python", "")
+        python_match = re.fullmatch(r">=([0-9]+(?:\.[0-9]+)*)", python_requires)
+        if not python_match:
+            raise SystemExit(f"Unsupported Home Assistant Python requirement: {python_requires}")
+        python_versions[version] = python_match.group(1)
 
     for path in REQ_FILES:
         process_requirements_file(path, changes, pytest_ha_reqs, pytest_ha_version)
@@ -506,7 +522,8 @@ def main() -> int:
     ha_version = extract_homeassistant_version('requirements_test.txt')
     if ha_version is None:
         ha_version = extract_homeassistant_version('requirements.txt')
-    update_readme(ha_version, changes)
+    if ha_version:
+        update_readme(ha_version, changes, python_versions[ha_version])
 
     if changes:
         print("Dependency updates applied:")
