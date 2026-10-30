@@ -128,7 +128,7 @@ jobs:
 
       - name: Python einrichten
         if: steps.check-needed.outputs.test_needed == 'true'
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ steps.test-stack.outputs.python_version }}
 
