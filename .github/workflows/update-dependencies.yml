@@ -2,10 +2,8 @@ name: Wöchentliche Abhängigkeitsaktualisierung (pip + manifest)
 
 on:
   schedule:
-    # GitHub cron ist UTC. Ein Termin trifft die CET-Woche, der andere die CEST-Woche.
-    # Kein zusätzlicher Stunden-Guard: verspätete Scheduler-Runs dürfen nicht stillschweigend übersprungen werden.
-    - cron: '0 3 * * 5' # Freitags 03:00 UTC
-    - cron: '0 4 * * 5' # Freitags 04:00 UTC
+    - cron: '17 5 * * 5'
+      timezone: Europe/Berlin
   workflow_dispatch:
 
 permissions:

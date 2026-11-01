@@ -5,14 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    - cron: '0 3 * * 5' # Freitags 03:00 UTC (05:00 CET)
-    - cron: '0 4 * * 5' # Freitags 04:00 UTC (05:00 CEST)
   workflow_dispatch:
   workflow_call:
     inputs:
       force-test:
-        description: Kompatibilität unabhängig von Uhrzeit und Dateidiff prüfen
+        description: Kompatibilität unabhängig vom Dateidiff prüfen
         type: boolean
         default: false
     outputs:
@@ -46,16 +43,6 @@ jobs:
           if [ "${FORCE_TEST}" = "true" ]; then
             echo "test_needed=true" >> "${GITHUB_OUTPUT}"
             echo "Aufruf für die wöchentliche Aktualisierung - HA-Test wird ausgeführt"
-            exit 0
-          elif [ "${GITHUB_EVENT_NAME}" = "schedule" ]; then
-            HOUR=$(TZ=Europe/Berlin date +'%H')
-            if [ "$HOUR" != "05" ]; then
-              echo "test_needed=false" >> "${GITHUB_OUTPUT}"
-              echo "Zeitgesteuerte Ausführung außerhalb 05:00 Europe/Berlin - Test wird übersprungen"
-              exit 0
-            fi
-            echo "test_needed=true" >> "${GITHUB_OUTPUT}"
-            echo "Zeitgesteuerte Ausführung um 05:00 Europe/Berlin - HA-Test wird ausgeführt"
             exit 0
           elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             echo "test_needed=true" >> "${GITHUB_OUTPUT}"
