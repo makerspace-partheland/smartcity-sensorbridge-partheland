@@ -84,69 +84,47 @@ jobs:
           echo "HA-Kompatibilitätstest übersprungen - keine relevanten Änderungen"
           echo "Check erfolgreich abgeschlossen"
 
-      - name: Test-Stack dynamisch aus PHACC ermitteln
+      - name: Veröffentlichten PHACC-Teststand ermitteln
         if: steps.check-needed.outputs.test_needed == 'true'
         id: test-stack
         run: |
-          python3 - <<'PY'
+          python3 - <<'PYTHON'
           import os
-          import re
-          import urllib.request
+          import sys
+          sys.path.insert(0, ".github/scripts")
+          from update_requirements import fetch_pytest_ha_version, fetch_pytest_ha_requirements
 
-          base_url = "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master"
-
-          def fetch_text(path: str) -> str:
-              with urllib.request.urlopen(f"{base_url}/{path}", timeout=30) as response:
-                  return response.read().decode("utf-8")
-
-          phacc_version = fetch_text("version").strip()
-          setup_py = fetch_text("setup.py")
-          requirements_test = fetch_text("requirements_test.txt")
-
-          python_match = re.search(r'python_requires=">=([0-9]+\.[0-9]+)"', setup_py)
-          python_version = python_match.group(1) if python_match else "3.14"
-
-          homeassistant_match = re.search(
-              r"^homeassistant==([0-9][^\s#]*)$",
-              requirements_test,
-              re.MULTILINE,
-          )
-          homeassistant_version = (
-              homeassistant_match.group(1) if homeassistant_match else ""
-          )
-
+          phacc_version = fetch_pytest_ha_version()
+          if not phacc_version:
+              raise SystemExit("Kein geeigneter veröffentlichter PHACC-Teststand verfügbar.")
+          homeassistant_version = fetch_pytest_ha_requirements(phacc_version).get("homeassistant")
           if not homeassistant_version:
-              raise SystemExit("Konnte Home-Assistant-Version nicht aus requirements_test.txt des PHACC-Repos ermitteln.")
-
+              raise SystemExit("Die Home-Assistant-Version des PHACC-Teststands fehlt.")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"python_version={python_version}\n")
+              output.write("python_version=3.14.9\n")
               output.write(f"phacc_version={phacc_version}\n")
               output.write(f"homeassistant_version={homeassistant_version}\n")
-
-          print(f"Python {python_version}, PHACC {phacc_version}, Home Assistant {homeassistant_version}")
-          PY
+          print(f"PHACC {phacc_version}, Home Assistant {homeassistant_version}")
+          PYTHON
 
       - name: Python einrichten
         if: steps.check-needed.outputs.test_needed == 'true'
-        uses: actions/setup-python@v7.0.0
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ steps.test-stack.outputs.python_version }}
 
       - name: Dependencies installieren
         if: steps.check-needed.outputs.test_needed == 'true'
         run: |
-          python -m pip install --upgrade pip
-
-          if [ -f requirements_test.txt ]; then
-            grep -Eiv '^[[:space:]]*(homeassistant|pytest-homeassistant-custom-component)[[:space:]]*(==|>=|<=|~=|>|<)' requirements_test.txt > /tmp/requirements_test_base.txt
-            if [ -s /tmp/requirements_test_base.txt ]; then
-              pip install -r /tmp/requirements_test_base.txt
-            fi
-          fi
-
-          pip install "pytest-homeassistant-custom-component==${{ steps.test-stack.outputs.phacc_version }}"
-          echo "Installiere Home Assistant ${{ steps.test-stack.outputs.homeassistant_version }} für den Kompatibilitätstest"
-          pip install "homeassistant==${{ steps.test-stack.outputs.homeassistant_version }}" --force-reinstall
+          set -euo pipefail
+          python -m pip install --only-binary=:all: --require-hashes -r .github/requirements-ci.txt
+          cutoff=$(date -u -d '168 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          grep -Eiv '^[[:space:]]*(homeassistant|pytest-homeassistant-custom-component)[[:space:]]*(==|>=|<=|~=|>|<)' \
+            requirements_test.txt > "$RUNNER_TEMP/requirements_test_base.txt" || test "$?" -eq 1
+          uv pip install --python "$(command -v python)" --index-url https://pypi.org/simple \
+            --exclude-newer "$cutoff" -r "$RUNNER_TEMP/requirements_test_base.txt" \
+            "pytest-homeassistant-custom-component==${{ steps.test-stack.outputs.phacc_version }}" \
+            "homeassistant==${{ steps.test-stack.outputs.homeassistant_version }}"
 
       - name: Kompatibilitätstest ausführen
         if: steps.check-needed.outputs.test_needed == 'true'
