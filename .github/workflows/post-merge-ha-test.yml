@@ -88,7 +88,7 @@ jobs:
           if not homeassistant_version:
               raise SystemExit("Die Home-Assistant-Version des PHACC-Teststands fehlt.")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write("python_version=3.14.9\n")
+              output.write("python_version=3.14.10\n")
               output.write(f"phacc_version={phacc_version}\n")
               output.write(f"homeassistant_version={homeassistant_version}\n")
           print(f"PHACC {phacc_version}, Home Assistant {homeassistant_version}")
