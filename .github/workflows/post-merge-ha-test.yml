@@ -16,6 +16,9 @@ on:
       tested_homeassistant_version:
         description: Home-Assistant-Version aus einem erfolgreichen Testlauf
         value: ${{ jobs.ha-compatibility-test.outputs.tested_homeassistant_version }}
+      packages:
+        description: Installierte Pakete aus einem erfolgreichen HA-Testlauf
+        value: ${{ jobs.ha-compatibility-test.outputs.packages }}
 
 permissions:
   contents: read
@@ -25,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tested_homeassistant_version: ${{ steps.tests.outputs.tested_homeassistant_version }}
+      packages: ${{ steps.dependencies.outputs.packages }}
 
     steps:
       - name: Repository auschecken
@@ -150,3 +154,13 @@ jobs:
         run: |
           echo "Home Assistant ${{ steps.test-stack.outputs.homeassistant_version }} Kompatibilitätstest erfolgreich"
           echo "Alle Tests bestanden"
+
+      - name: Installierte HA-Testabhängigkeiten erfassen
+        id: dependencies
+        if: >-
+          steps.tests.outputs.test_status == 'success' &&
+          (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main' && github.ref_protected
+        run: |
+          set -euo pipefail
+          python -m pip inspect | python -B .github/scripts/dependency_snapshot.py

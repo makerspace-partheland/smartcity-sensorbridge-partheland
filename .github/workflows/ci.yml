@@ -14,6 +14,8 @@ jobs:
     # Verhindere Loop: Nicht bei push von github-actions[bot]
     if: github.actor != 'github-actions[bot]' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.dependencies.outputs.packages }}
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v7
@@ -37,7 +39,11 @@ jobs:
         run: |
           flake8 . || echo "Lint-Warnungen gefunden (E/W werden derzeit nicht geblockt)"
 
+      - name: Erfassung der Testabhängigkeiten prüfen
+        run: python3 -B .github/scripts/test_dependency_snapshot.py
+
       - name: Tests ausführen
+        id: tests
         run: |
           set +e
           pytest -q --maxfail=1 --disable-warnings
@@ -46,7 +52,28 @@ jobs:
             echo "Keine Tests gefunden – CI OK"
             exit 0
           fi
+          if [ "$code" -eq 0 ]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          fi
           exit $code
 
+      - name: Installierte Testabhängigkeiten erfassen
+        id: dependencies
+        if: >-
+          steps.tests.outputs.passed == 'true' && github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' && github.ref_protected
+        run: |
+          set -euo pipefail
+          python -m pip inspect | python -B .github/scripts/dependency_snapshot.py
 
-
+  dependency-graph:
+    needs: test
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected &&
+      needs.test.outputs.packages != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/submit-test-dependencies.yml
+    with:
+      packages: ${{ needs.test.outputs.packages }}
+      test-scope: ci

@@ -21,29 +21,32 @@ jobs:
 
       - name: Dependabot Metadaten validieren
         id: validate-deps
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
         run: |
           # Validiere Update-Typ (nur patch)
-          if ! echo "${{ steps.metadata.outputs.update-type }}" | grep -q "version-update:semver-patch"; then
+          if ! echo "$UPDATE_TYPE" | grep -q "version-update:semver-patch"; then
             echo "Kein Patch-Update - Auto-Merge übersprungen"
-            echo "valid_update=false" >> $GITHUB_OUTPUT
+            echo "valid_update=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
           # Validiere kritische Pakete
-          DEPS="${{ steps.metadata.outputs.dependencies }}"
-          if echo "$DEPS" | grep -q "homeassistant\|paho-mqtt\|aiohttp"; then
+          if echo "$DEPENDENCY_NAMES" | grep -q "homeassistant\|paho-mqtt\|aiohttp"; then
             echo "Kritisches Paket erkannt - Auto-Merge übersprungen"
-            echo "valid_update=false" >> $GITHUB_OUTPUT
+            echo "valid_update=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           
           echo "Dependabot Update ist für Auto-Merge geeignet"
-          echo "valid_update=true" >> $GITHUB_OUTPUT
+          echo "valid_update=true" >> "$GITHUB_OUTPUT"
 
       - name: Auto-Merge aktivieren
         if: steps.validate-deps.outputs.valid_update == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
           

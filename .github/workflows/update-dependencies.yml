@@ -15,6 +15,18 @@ jobs:
     with:
       force-test: true
 
+  dependency-graph:
+    needs: compatibility
+    if: >-
+      github.ref == 'refs/heads/main' && github.ref_protected &&
+      needs.compatibility.outputs.packages != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/submit-test-dependencies.yml
+    with:
+      packages: ${{ needs.compatibility.outputs.packages }}
+      test-scope: ha
+
   update:
     needs: compatibility
     # Nur vertrauenswürdiges main darf mit dem bestehenden Token einen PR schreiben.
