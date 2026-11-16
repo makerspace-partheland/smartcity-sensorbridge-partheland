@@ -1,0 +1,27 @@
+name: Sicherheitsdaten prüfen
+'on':
+  schedule:
+  - cron: 41 5 * * *
+    timezone: Europe/Berlin
+  workflow_dispatch: {}
+permissions: {}
+concurrency:
+  group: security-detection
+  cancel-in-progress: false
+jobs:
+  detect:
+    name: Aktuelle Sicherheitsdaten erfassen
+    if: github.repository == 'makerspace-partheland/smartcity-sensorbridge-partheland'
+      && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      vulnerability-alerts: read
+    steps:
+    - name: Geschützten Quellstand laden
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Abhängigkeitsmeldungen erfassen
+      uses: makerspace-partheland/api-docs/security-inventory@0e780929d8a9e102e044d66eb8eee10172f78e70

@@ -1,0 +1,101 @@
+name: Abhängigkeiten der Testumgebung erfassen
+
+on:
+  workflow_call:
+    inputs:
+      packages:
+        type: string
+        required: true
+      test-scope:
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  submit:
+    if: >-
+      github.repository == 'makerspace-partheland/smartcity-sensorbridge-partheland' &&
+      (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' && github.ref_protected
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      # Kein Checkout: Die Paketliste wird ausschließlich als JSON verarbeitet.
+      - name: Installierte Testabhängigkeiten an GitHub melden
+        env:
+          PACKAGES: ${{ inputs.packages }}
+          TEST_SCOPE: ${{ inputs.test-scope }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          import json
+          import os
+          import re
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+
+          raw = os.environ['PACKAGES']
+          if len(raw.encode('utf-8')) > 48 * 1024:
+              raise ValueError('Paketliste überschreitet die Grenze für den Joboutput')
+          packages = json.loads(raw)
+          if not isinstance(packages, list) or not 1 <= len(packages) <= 2000:
+              raise ValueError('Ungültige Paketliste')
+          scope = os.environ['TEST_SCOPE']
+          if scope not in ('ci', 'ha'):
+              raise ValueError('Unbekannte Testumgebung')
+          resolved = {}
+          names = set()
+          for package in packages:
+              if not isinstance(package, list) or len(package) != 2:
+                  raise ValueError('Ungültiger Paketeintrag')
+              name, version = package
+              if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', name):
+                  raise ValueError('Ungültiger Paketname')
+              if not isinstance(version, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.!+_-]{0,127}', version):
+                  raise ValueError('Ungültige installierte Paketversion')
+              if name in names:
+                  raise ValueError('Doppelter Paketname')
+              names.add(name)
+              purl = 'pkg:pypi/' + name + '@' + quote(version, safe='')
+              # Die Inventur belegt installierte Pakete, keine Herkunftsbeziehungen.
+              resolved[purl] = {'package_url': purl, 'scope': 'development'}
+          repository = os.environ['GITHUB_REPOSITORY']
+          sha = os.environ['GITHUB_SHA']
+          if not re.fullmatch(r'[a-f0-9]{40}', sha):
+              raise ValueError('Ungültiger Quellstand')
+          key = 'sensorbridge-tests-' + scope
+          snapshot = {
+              'version': 0, 'sha': sha, 'ref': 'refs/heads/main',
+              'job': {'id': os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'],
+                      'correlator': key},
+              'detector': {'name': 'sensorbridge-test-environment', 'version': '1',
+                           'url': 'https://github.com/' + repository},
+              'scanned': datetime.now(timezone.utc).isoformat(),
+              'manifests': {key: {'name': 'SensorBridge-Testumgebung (' + scope + ')',
+                                  'resolved': resolved}},
+          }
+          payload = json.dumps(snapshot, separators=(',', ':')).encode('utf-8')
+          if len(payload) > 1024 * 1024:
+              raise ValueError('Dependency-Snapshot ist zu groß')
+          headers = {'Accept': 'application/vnd.github+json',
+                     'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                     'X-GitHub-Api-Version': '2026-03-10',
+                     'Content-Type': 'application/json'}
+          # Ein verspäteter Lauf soll keinen neueren main-Stand überdecken.
+          with urlopen(Request('https://api.github.com/repos/' + repository + '/commits/main',
+                               headers=headers), timeout=30) as response:
+              current = json.load(response)['sha']
+          if current != sha:
+              print('Der Quellstand wurde auf main bereits abgelöst; keine Übernahme.')
+          else:
+              request = Request('https://api.github.com/repos/' + repository + '/dependency-graph/snapshots',
+                                data=payload, headers=headers, method='POST')
+              with urlopen(request, timeout=30) as response:
+                  if response.status != 201:
+                      raise ValueError('GitHub hat den Dependency-Snapshot nicht angenommen')
+                  print('Die installierten Pakete der Testumgebung wurden an GitHub gemeldet.')
+          PY
