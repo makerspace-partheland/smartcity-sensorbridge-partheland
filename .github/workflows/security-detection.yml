@@ -24,4 +24,4 @@ jobs:
       with:
         persist-credentials: false
     - name: Abhängigkeitsmeldungen erfassen
-      uses: makerspace-partheland/api-docs/security-inventory@0e780929d8a9e102e044d66eb8eee10172f78e70
+      uses: makerspace-partheland/api-docs/security-inventory@a4e8d19382acd01f225b34795c103e30a65b7351
