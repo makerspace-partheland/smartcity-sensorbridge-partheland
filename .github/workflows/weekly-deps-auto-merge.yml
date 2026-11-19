@@ -1,33 +1,132 @@
 name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
+  workflow_run:
+    workflows: [CI, Post-Merge HA Compatibility Test]
+    branches: [chore/weekly-deps-update]
+    types: [completed]
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   automerge-weekly:
-    if: github.event.pull_request.head.ref == 'chore/weekly-deps-update' && github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.repository == 'makerspace-partheland/smartcity-sensorbridge-partheland' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'chore/weekly-deps-update'
+    concurrency:
+      group: sensorbridge-weekly-merge
+      cancel-in-progress: false
     timeout-minutes: 5
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
     steps:
-      - name: Auto-Merge aktivieren
+      - name: Geprüften Wochen-PR zusammenführen und Main-Prüfung starten
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          CHECKED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          
-          echo "Aktiviere Auto-Merge für Weekly Deps PR #${PR_NUMBER}..."
-          gh pr merge ${PR_NUMBER} \
-            --repo "${GH_REPO}" \
-            --auto \
-            --squash \
-            --delete-branch \
-            --body "Automatisch zusammengeführt nach erfolgreichen Required Checks." \
-            --subject "deps: wöchentliche Abhängigkeitsaktualisierung (automatisch)"
-          
-          echo "Auto-Merge für Weekly Deps PR #${PR_NUMBER} aktiviert"
+          set -euo pipefail
+          pull=$(gh api --method GET "repos/$GH_REPO/pulls" -f state=all -f base=main \
+            -f "head=${GH_REPO%/*}:chore/weekly-deps-update" | jq -c --arg checked "$CHECKED_SHA" \
+            '.[] | select(.user.login == "msplSAM" and .head.sha == $checked and .draft == false and (.state == "open" or .merged_at != null))')
+          if [[ -z "$pull" ]]; then
+            echo "Kein Wochen-PR für diesen geprüften Quellstand."
+            exit 0
+          fi
+          PR_NUMBER=$(jq -er '.number' <<< "$pull")
+          if [[ $(jq -er '.state' <<< "$pull") == open ]]; then
+            BASE_SHA=$(jq -er '.base.sha' <<< "$pull")
+            HEAD_SHA=$(jq -er '.head.sha' <<< "$pull")
+            if ! gh pr checks "$PR_NUMBER" --required --json name,state | jq -e \
+              'length > 0 and all(.[]; .state == "SUCCESS") and (map(.name) | index("test") != null and index("ha-compatibility-test") != null)' >/dev/null; then
+              echo "Die erforderlichen Prüfungen sind für diesen PR noch nicht erfolgreich abgeschlossen."
+              exit 0
+            fi
+            manifest=custom_components/sensorbridge_partheland/manifest.json
+            gh api --paginate "repos/$GH_REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/deps-files"
+            for file in "$manifest" requirements.txt requirements_test.txt; do
+              gh api -H 'Accept: application/vnd.github.raw+json' \
+                "repos/$GH_REPO/contents/$file?ref=$BASE_SHA" > "$RUNNER_TEMP/base-${file##*/}"
+              gh api -H 'Accept: application/vnd.github.raw+json' \
+                "repos/$GH_REPO/contents/$file?ref=$HEAD_SHA" > "$RUNNER_TEMP/head-${file##*/}"
+            done
+            python3 - "$RUNNER_TEMP" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          directory = Path(sys.argv[1])
+          allowed = {"README.md", "requirements.txt", "requirements_test.txt",
+                     "custom_components/sensorbridge_partheland/manifest.json"}
+          files = set((directory / "deps-files").read_text().splitlines())
+          if not files or not files <= allowed:
+              raise SystemExit("Dateien außerhalb der wöchentlichen Abhängigkeitsaktualisierung.")
+          base = json.loads((directory / "base-manifest.json").read_text())
+          head = json.loads((directory / "head-manifest.json").read_text())
+          base_requirements, head_requirements = base.pop("requirements"), head.pop("requirements")
+          base_version, head_version = base.pop("version"), head.pop("version")
+          if head != base:
+              raise SystemExit("Der PR ändert andere Manifestfelder als Abhängigkeiten und Version.")
+          requirement = re.compile(
+              r"\s*([A-Za-z0-9_.-]+(?:\[[^]]+\])?)\s*(==|>=)\s*"
+              r"([0-9]+(?:\.[0-9]+)*(?:\.post[0-9]+)?)(?:\s*;\s*(.*))?"
+          )
+
+          def version_key(version):
+              release, _, post = version.partition(".post")
+              return tuple(map(int, release.split("."))), int(post or -1)
+
+          def check_versions(previous, current):
+              if len(previous) != len(current):
+                  raise SystemExit("Der PR fügt Abhängigkeiten hinzu oder entfernt sie.")
+              for old, new in zip(previous, current, strict=True):
+                  if old == new:
+                      continue
+                  before, after = requirement.fullmatch(old), requirement.fullmatch(new)
+                  if not before or not after or before.groups()[:2] != after.groups()[:2] or before[4] != after[4]:
+                      raise SystemExit("Der PR ändert eine Anforderung außerhalb der Paketversion.")
+                  old_version, new_version = version_key(before[3]), version_key(after[3])
+                  if old_version[0][0] != new_version[0][0] or old_version >= new_version:
+                      raise SystemExit("Der PR enthält kein stabiles Patch- oder Minor-Update.")
+
+          check_versions(base_requirements, head_requirements)
+          for file in ("requirements.txt", "requirements_test.txt"):
+              check_versions((directory / f"base-{file}").read_text().splitlines(),
+                             (directory / f"head-{file}").read_text().splitlines())
+          expected = base_version
+          if head_requirements != base_requirements:
+              if not re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}", base_version):
+                  raise SystemExit("Stabile Integrationsversion fehlt.")
+              major, minor, patch = base_version.split(".")
+              expected = f"{major}.{minor}.{int(patch) + 1}"
+          if head_version != expected:
+              raise SystemExit("Manifestversion entspricht nicht dem zulässigen Patchbump.")
+          PY
+            gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --match-head-commit "$HEAD_SHA" \
+              --squash --delete-branch \
+              --body "Automatisch zusammengeführt nach erfolgreichen Required Checks." \
+              --subject "deps: wöchentliche Abhängigkeitsaktualisierung (automatisch)"
+          fi
+          merge_sha=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq 'select(.merged and .merged_by.login == "github-actions[bot]") | .merge_commit_sha')
+          if [[ ! "$merge_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Der Merge-Commit konnte nicht bestätigt werden."
+            exit 1
+          fi
+          matching_runs=$(gh api --method GET "repos/$GH_REPO/actions/workflows/ci.yml/runs" \
+            -f branch=main -f event=workflow_dispatch | jq --arg title "Wochenprüfung $merge_sha" \
+            '[.workflow_runs[] | select(.display_title == $title and .actor.login == "github-actions[bot]"
+              and (.status != "completed" or .conclusion == "success"))] | length')
+          if [[ "$matching_runs" != 0 ]]; then
+            echo "Die Main-Prüfung für diesen Merge ist bereits gestartet oder erfolgreich."
+            exit 0
+          fi
+          gh workflow run ci.yml --repo "$GH_REPO" --ref main \
+            -f "weekly-pr=$PR_NUMBER" -f "merge-sha=$merge_sha"

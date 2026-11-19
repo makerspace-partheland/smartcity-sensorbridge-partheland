@@ -7,6 +7,10 @@ on:
       timezone: Europe/Berlin
   workflow_dispatch:
   workflow_call:
+    inputs:
+      candidate-sha:
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -17,7 +21,7 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.candidate-sha || github.event.pull_request.head.sha || github.sha }}
 
       - name: HACS-Validierung
         uses: hacs/action@main

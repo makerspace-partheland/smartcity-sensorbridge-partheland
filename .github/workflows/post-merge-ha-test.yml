@@ -12,6 +12,9 @@ on:
         description: Kompatibilität unabhängig vom Dateidiff prüfen
         type: boolean
         default: false
+      candidate-sha:
+        type: string
+        default: ""
     outputs:
       tested_homeassistant_version:
         description: Home-Assistant-Version aus einem erfolgreichen Testlauf
@@ -34,7 +37,7 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.candidate-sha || github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Prüfe ob HA-Test nötig ist

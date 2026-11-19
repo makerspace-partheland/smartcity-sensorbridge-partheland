@@ -6,6 +6,7 @@ Rules:
 - Only update to latest STABLE (non pre-release) version.
 - Only apply patch/minor updates automatically. Major updates are skipped.
 - Critical packages (homeassistant, paho-mqtt, aiohttp) are always limited to patch/minor.
+- An installed manifest requirement change increments the integration patch version.
 
 Target files:
 - requirements.txt
@@ -471,7 +472,14 @@ def process_manifest(path: str, changes: List[str]) -> None:
             new_reqs.append(entry)
 
     if updated:
+        version = data.get("version")
+        if not isinstance(version, str) or not re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}", version):
+            raise SystemExit("Die stabile Integrationsversion für den Patchbump ist ungültig.")
+        major, minor, patch = version.split(".")
+        next_version = f"{major}.{minor}.{int(patch) + 1}"
         data["requirements"] = new_reqs
+        data["version"] = next_version
+        changes.append(f"{path}: Integrationsversion {version} -> {next_version}")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2, ensure_ascii=False)
             fh.write("\n")
