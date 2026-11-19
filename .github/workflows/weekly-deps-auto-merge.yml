@@ -57,7 +57,7 @@ jobs:
               gh api -H 'Accept: application/vnd.github.raw+json' \
                 "repos/$GH_REPO/contents/$file?ref=$HEAD_SHA" > "$RUNNER_TEMP/head-${file##*/}"
             done
-            python3 - "$RUNNER_TEMP" <<'PY'
+            release_required=$(python3 - "$RUNNER_TEMP" <<'PY'
           import json
           import re
           import sys
@@ -109,7 +109,13 @@ jobs:
               expected = f"{major}.{minor}.{int(patch) + 1}"
           if head_version != expected:
               raise SystemExit("Manifestversion entspricht nicht dem zulässigen Patchbump.")
+          print("true" if head_version != base_version else "false")
           PY
+            )
+            if [[ "$release_required" == true ]]; then
+              echo "Der Versionsvorschlag bleibt bis zur realen Neuinstallations- und Update-Abnahme offen."
+              exit 0
+            fi
             gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --match-head-commit "$HEAD_SHA" \
               --squash --delete-branch \
               --body "Automatisch zusammengeführt nach erfolgreichen Required Checks." \
