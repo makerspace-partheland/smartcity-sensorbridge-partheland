@@ -14,9 +14,48 @@ jobs:
     # Verhindere Loop: Nicht bei push von github-actions[bot]
     if: github.actor != 'github-actions[bot]' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       packages: ${{ steps.dependencies.outputs.packages }}
+      release-version: ${{ steps.release-version.outputs.version }}
     steps:
+      - name: Verifizierte Dependabot-Metadaten abrufen
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+        id: dependabot
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Vorabversionen von Dependabot ablehnen
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCIES: ${{ steps.dependabot.outputs.updated-dependencies-json }}
+        run: |
+          set -euo pipefail
+          updates=$(jq -er 'select(type == "array" and length > 0) | .[] | [.packageEcosystem, .newVersion, .dependencyName] | @tsv' <<< "$DEPENDENCIES")
+          while IFS=$'\t' read -r ecosystem version dependency; do
+            if [[ "$ecosystem" == pip ]]; then
+              # PEP 440 erlaubt für stabile Versionen auch Epoch und Post-Releases.
+              if [[ ! "$version" =~ ^([0-9]+!)?[0-9]+(\.[0-9]+)*(\.post[0-9]+)?$ || -z "$dependency" ]]; then
+                echo "Python-Abhängigkeit ohne eindeutige stabile Versionsangabe abgelehnt."
+                exit 1
+              fi
+              continue
+            fi
+            if [[ "$ecosystem" != github_actions || ! "$version" =~ ^v?[0-9]+(\.[0-9]+){0,2}$ || ! "$dependency" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*$ ]]; then
+              echo "Dependabot-Update ohne eindeutige stabile Versionsangabe abgelehnt."
+              exit 1
+            fi
+            upstream=$(cut -d / -f 1,2 <<< "$dependency")
+            # Auch rein numerische Tags können auf GitHub als Vorabversion markiert sein.
+            prerelease=$(gh api --paginate "repos/$upstream/releases?per_page=100" | jq -r --arg version "${version#v}" '.[] | select(.prerelease and (.tag_name | sub("^v"; "")) == $version) | .tag_name')
+            if [[ -n "$prerelease" ]]; then
+              echo "Als Vorabversion markiertes Dependabot-Update abgelehnt."
+              exit 1
+            fi
+          done <<< "$updates"
+
       - name: Repository auschecken
         uses: actions/checkout@v7
         with:
@@ -57,6 +96,31 @@ jobs:
           fi
           exit $code
 
+      - name: Neue Integrationsversion erkennen
+        id: release-version
+        if: >-
+          steps.tests.outputs.passed == 'true' && github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' && github.ref_protected
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          manifest=custom_components/sensorbridge_partheland/manifest.json
+          version=$(jq -er '.version' "$manifest")
+          previous=$(gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/$manifest?ref=$PREVIOUS_SHA" | jq -er '.version')
+          if [[ "$version" == "$previous" ]]; then
+            exit 0
+          fi
+          stable='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [[ ! "$version" =~ $stable || ! "$previous" =~ $stable ||
+                $(printf '%s\n' "$previous" "$version" | sort -V | tail -1) != "$version" ]]; then
+            echo "Für ein HACS-Release ist eine höhere stabile Manifestversion erforderlich."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Installierte Testabhängigkeiten erfassen
         id: dependencies
         if: >-
@@ -77,3 +141,78 @@ jobs:
     with:
       packages: ${{ needs.test.outputs.packages }}
       test-scope: ci
+
+  release-ha:
+    needs: test
+    if: needs.test.outputs.release-version != ''
+    uses: ./.github/workflows/post-merge-ha-test.yml
+    with:
+      force-test: true
+
+  release-hacs:
+    needs: test
+    if: needs.test.outputs.release-version != ''
+    uses: ./.github/workflows/hacs-validate.yml
+
+  release:
+    needs: [test, release-ha, release-hacs]
+    if: >-
+      github.repository == 'makerspace-partheland/smartcity-sensorbridge-partheland' &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main' && github.ref_protected &&
+      needs.test.outputs.release-version != '' && needs.release-ha.outputs.tested_homeassistant_version != ''
+    concurrency:
+      group: hacs-release
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.test.outputs.release-version }}
+    steps:
+      # Der manuell abgenommene Versionsbump ist die Freigabe. Der Tag bindet den geprüften Commit.
+      - name: Geprüften Quellstand für HACS veröffentlichen
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          verify=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq '.commit.verification.verified')
+          if [[ "$verify" != true ]]; then
+            echo "Der Release-Commit ist nicht von GitHub verifiziert."
+            exit 1
+          fi
+          current=$(gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/custom_components/sensorbridge_partheland/manifest.json?ref=main" | jq -er '.version')
+          if [[ "$current" != "$VERSION" ]]; then
+            echo "Die Versionsentscheidung auf main hat sich geändert. Dieser Stand wird nicht veröffentlicht."
+            exit 1
+          fi
+          already_published=false
+          if release=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease --jq '.isDraft or .isPrerelease' 2>&1); then
+            if [[ "$release" != false ]]; then
+              echo "Für $tag existiert ein Entwurf oder eine Vorabversion."
+              exit 1
+            fi
+            already_published=true
+          elif [[ "$release" != *'release not found'* && "$release" != *'HTTP 404'* ]]; then
+            echo "Das GitHub-Release konnte nicht geprüft werden."
+            exit 1
+          fi
+          if ! tagged=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>&1); then
+            if [[ "$tagged" != *'HTTP 404'* || "$already_published" == true ]]; then
+              echo "Der Release-Tag konnte nicht geprüft werden."
+              exit 1
+            fi
+            tagged=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$tag" -f "sha=$GITHUB_SHA" --jq '.object.sha')
+          fi
+          if [[ "$tagged" != "$GITHUB_SHA" ]]; then
+            echo "Der Release-Tag verweist auf einen anderen Quellstand."
+            exit 1
+          fi
+          if [[ "$already_published" == true ]]; then
+            echo "Das stabile Release $tag ist bereits veröffentlicht."
+            exit 0
+          fi
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$tag" \
+            --notes "Version $VERSION der SmartCity SensorBridge Partheland."
