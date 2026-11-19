@@ -2,7 +2,7 @@ name: Wöchentliche Abhängigkeitsaktualisierung (pip + manifest)
 
 on:
   schedule:
-    - cron: '17 5 * * 5'
+    - cron: '17 5 * * 4'
       timezone: Europe/Berlin
   workflow_dispatch:
 
