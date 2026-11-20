@@ -1,4 +1,9 @@
 name: Home-Assistant-Kompatibilität
+run-name: >-
+  ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft &&
+      (github.event.action != 'edited' || github.event.changes.base.ref.from) &&
+      format('HA-Test PR {0} {1}', github.event.number, github.sha) ||
+      (github.event_name == 'pull_request' && format('HA-Status PR {0}', github.event.number)) || '' }}
 
 on:
   push:
@@ -33,16 +38,12 @@ permissions:
 
 jobs:
   ha-compatibility-test:
-    # Ein übersprungener Job darf den Pflichtcheck für den Merge nicht erfüllen.
-    name: >-
-      ${{ (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base.ref.from))
-          && 'Keine HA-Prüfung erforderlich' || 'ha-compatibility-test' }}
-    if: >-
-      github.event_name != 'pull_request' ||
-      (!github.event.pull_request.draft && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
+    # Entwürfe dürfen keinen erfolgreichen Pflichtcheck melden.
+    name: ${{ github.event.pull_request.draft && 'Entwurf' || 'ha-compatibility-test' }}
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     concurrency:
       group: ha-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}-${{ inputs.candidate-sha }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action != 'edited' || github.event.changes.base.ref.from != '') }}
     runs-on: ubuntu-latest
     outputs:
       tested_homeassistant_version: ${{ steps.tests.outputs.tested_homeassistant_version }}
@@ -51,14 +52,42 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: read
     steps:
+      - name: Prüfergebnis nach einer Textänderung bestätigen
+        id: previous
+        if: github.event.action == 'edited' && !github.event.changes.base.ref.from
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_TITLE: ${{ format('HA-Test PR {0} {1}', github.event.number, github.sha) }}
+        run: |
+          set -euo pipefail
+          # Nur der letzte vollständige Lauf für dieses PR-Merge-Ergebnis zählt.
+          previous=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/post-merge-ha-test.yml/runs" \
+            -f event=pull_request -f head_sha="$HEAD_SHA" -f per_page=100 |
+            jq -r --arg title "$EXPECTED_TITLE" '[.workflow_runs[] | select(.display_title == $title)] | first | {id, conclusion}')
+          result=$(jq -r '.conclusion // ""' <<< "$previous")
+          if [[ "$result" == success ]]; then
+            run_id=$(jq -er '.id' <<< "$previous")
+            jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs")
+            if jq -e --arg step "HA-Kompatibilität $GITHUB_SHA" \
+              'any(.jobs[]; .name == "ha-compatibility-test" and .conclusion == "success" and
+                any(.steps[]; .name == $step and .conclusion == "success"))' <<< "$jobs" >/dev/null; then
+              echo "passed=true" >> "$GITHUB_OUTPUT"
+            fi
+          elif [[ "$result" == failure ]]; then
+            echo "Der vollständige HA-Test für dieses Merge-Ergebnis ist fehlgeschlagen."
+            exit 1
+          fi
+
       - name: Verifizierte Dependabot-Metadaten abrufen
-        if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+        if: steps.previous.outputs.passed != 'true' && github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
         id: dependabot
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
 
       - name: Vorabversionen von Dependabot ablehnen
-        if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+        if: steps.previous.outputs.passed != 'true' && github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
         env:
           GH_TOKEN: ${{ github.token }}
           DEPENDENCIES: ${{ steps.dependabot.outputs.updated-dependencies-json }}
@@ -88,21 +117,25 @@ jobs:
           done <<< "$updates"
 
       - name: Repository auschecken
+        if: steps.previous.outputs.passed != 'true'
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.candidate-sha || github.sha }}
           persist-credentials: false
 
       - name: Offiziellen Home-Assistant-Teststand ermitteln
+        if: steps.previous.outputs.passed != 'true'
         id: test-stack
         run: python3 .github/scripts/update_requirements.py --test-stack >> "$GITHUB_OUTPUT"
 
       - name: Python einrichten
+        if: steps.previous.outputs.passed != 'true'
         uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ steps.test-stack.outputs.python_version }}
 
       - name: Testabhängigkeiten installieren
+        if: steps.previous.outputs.passed != 'true'
         env:
           TESTED_HA: ${{ steps.test-stack.outputs.homeassistant_version }}
         run: |
@@ -113,6 +146,7 @@ jobs:
             --exclude-newer "$cutoff" -r requirements_test.txt "pytest-homeassistant==$TESTED_HA"
 
       - name: Laufzeitabhängigkeiten der Integration installieren
+        if: steps.previous.outputs.passed != 'true'
         env:
           TESTED_HA: ${{ steps.test-stack.outputs.homeassistant_version }}
         run: |
@@ -130,12 +164,13 @@ jobs:
             "pytest-homeassistant==$TESTED_HA" -- "${runtime_requirements[@]}"
 
       - name: Lint und Paketerfassung prüfen
-        if: github.event_name == 'pull_request'
+        if: steps.previous.outputs.passed != 'true' && github.event_name == 'pull_request'
         run: |
           flake8 . || echo "Lint-Warnungen gefunden (E/W werden derzeit nicht geblockt)"
           python3 -B .github/scripts/test_dependency_snapshot.py
 
-      - name: Kompatibilitätstest ausführen
+      - name: HA-Kompatibilität ${{ github.sha }}
+        if: steps.previous.outputs.passed != 'true'
         id: tests
         env:
           PYTHONPATH: ${{ github.workspace }}

@@ -12,6 +12,7 @@ permissions:
 jobs:
   compatibility:
     permissions:
+      actions: read
       contents: read
       pull-requests: read
     uses: ./.github/workflows/post-merge-ha-test.yml

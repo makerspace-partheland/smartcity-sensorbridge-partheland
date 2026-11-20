@@ -163,6 +163,7 @@ jobs:
 
   release-ha:
     permissions:
+      actions: read
       contents: read
       pull-requests: read
     needs: test
