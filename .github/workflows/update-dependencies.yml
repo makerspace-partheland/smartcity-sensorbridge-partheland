@@ -12,8 +12,6 @@ permissions:
 jobs:
   compatibility:
     uses: ./.github/workflows/post-merge-ha-test.yml
-    with:
-      force-test: true
 
   dependency-graph:
     needs: compatibility

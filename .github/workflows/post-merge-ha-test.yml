@@ -3,15 +3,19 @@ name: Post-Merge HA Compatibility Test
 on:
   push:
     branches: [main]
+    paths:
+      - 'custom_components/**'
+      - 'tests/**'
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - '.github/requirements-ci.txt'
+      - '.github/scripts/update_requirements.py'
+      - '.github/workflows/post-merge-ha-test.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
   workflow_call:
     inputs:
-      force-test:
-        description: Kompatibilität unabhängig vom Dateidiff prüfen
-        type: boolean
-        default: false
       candidate-sha:
         type: string
         default: ""
@@ -37,61 +41,19 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.candidate-sha || github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-
-      - name: Prüfe ob HA-Test nötig ist
-        id: check-needed
-        env:
-          FORCE_TEST: ${{ inputs.force-test || false }}
-        run: |
-          set -euo pipefail
-
-          if [ "${FORCE_TEST}" = "true" ]; then
-            echo "test_needed=true" >> "${GITHUB_OUTPUT}"
-            echo "Aufruf für die wöchentliche Aktualisierung - HA-Test wird ausgeführt"
-            exit 0
-          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            echo "test_needed=true" >> "${GITHUB_OUTPUT}"
-            echo "Manuelle Ausführung - HA-Test wird ausgeführt"
-            exit 0
-          elif [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-            BASE_BRANCH="${GITHUB_BASE_REF}"
-            git fetch origin "${BASE_BRANCH}" --depth=1
-            DIFF_BASE="origin/${BASE_BRANCH}"
-          else
-            DIFF_BASE="HEAD~1"
-          fi
-
-          # Prüfe ob HA-relevante Dateien geändert wurden
-          changes=$(git diff "${DIFF_BASE}" HEAD --name-only)
-          if grep -Eq '^((custom_components|tests)/|requirements[^/]*\.txt$|pyproject\.toml$|\.github/(requirements-ci\.txt|scripts/update_requirements\.py|workflows/post-merge-ha-test\.yml)$)' <<< "$changes"; then
-            echo "test_needed=true" >> "${GITHUB_OUTPUT}"
-            echo "HA-relevante Änderungen erkannt - Test wird ausgeführt"
-          else
-            echo "test_needed=false" >> "${GITHUB_OUTPUT}"
-            echo "Keine HA-relevanten Änderungen - Test wird übersprungen"
-          fi
-
-      - name: HA-Test überspringen
-        if: steps.check-needed.outputs.test_needed == 'false'
-        run: |
-          echo "HA-Kompatibilitätstest übersprungen - keine relevanten Änderungen"
-          echo "Check erfolgreich abgeschlossen"
+          ref: ${{ inputs.candidate-sha || github.sha }}
+          persist-credentials: false
 
       - name: Offiziellen Home-Assistant-Teststand ermitteln
-        if: steps.check-needed.outputs.test_needed == 'true'
         id: test-stack
         run: python3 .github/scripts/update_requirements.py --test-stack >> "$GITHUB_OUTPUT"
 
       - name: Python einrichten
-        if: steps.check-needed.outputs.test_needed == 'true'
         uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ steps.test-stack.outputs.python_version }}
 
-      - name: Dependencies installieren
-        if: steps.check-needed.outputs.test_needed == 'true'
+      - name: Testabhängigkeiten installieren
         env:
           TESTED_HA: ${{ steps.test-stack.outputs.homeassistant_version }}
         run: |
@@ -101,20 +63,24 @@ jobs:
           uv pip install --python "$(command -v python)" --index-url https://pypi.org/simple \
             --exclude-newer "$cutoff" -r requirements_test.txt "pytest-homeassistant==$TESTED_HA"
 
-      - name: Laufzeitabhängigkeiten des Release-Kandidaten prüfen
-        if: steps.check-needed.outputs.test_needed == 'true' && inputs.candidate-sha != ''
+      - name: Laufzeitabhängigkeiten der Integration installieren
+        env:
+          TESTED_HA: ${{ steps.test-stack.outputs.homeassistant_version }}
         run: |
           set -euo pipefail
           manifest=custom_components/sensorbridge_partheland/manifest.json
           constraints=$(python -c 'from pathlib import Path; import homeassistant; print(Path(homeassistant.__file__).with_name("package_constraints.txt"))')
-          jq -er '.requirements | type == "array" and all(.[]; type == "string")' "$manifest" > /dev/null
-          jq -r '.requirements[]' "$manifest" > "$RUNNER_TEMP/sensorbridge-runtime-requirements.txt"
+          requirements_file="$RUNNER_TEMP/sensorbridge-runtime-requirements.txt"
+          jq -r '(if has("requirements") then .requirements else [] end) |
+            if type == "array" and all(.[]; type == "string" and length > 0 and (test("[\\r\\n]") | not))
+            then .[] else error("Ungültige Laufzeitabhängigkeiten im Manifest") end' "$manifest" > "$requirements_file"
+          mapfile -t runtime_requirements < "$requirements_file"
           cutoff=$(date -u -d '168 hours ago' +%Y-%m-%dT%H:%M:%SZ)
-          uv pip install --dry-run --python "$(command -v python)" --index-url https://pypi.org/simple \
-            --exclude-newer "$cutoff" -c "$constraints" -r "$RUNNER_TEMP/sensorbridge-runtime-requirements.txt"
+          uv pip install --python "$(command -v python)" --index-url https://pypi.org/simple \
+            --exclude-newer "$cutoff" -c "$constraints" -r requirements_test.txt \
+            "pytest-homeassistant==$TESTED_HA" -- "${runtime_requirements[@]}"
 
       - name: Kompatibilitätstest ausführen
-        if: steps.check-needed.outputs.test_needed == 'true'
         id: tests
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -126,35 +92,14 @@ jobs:
             echo "Installierte Home-Assistant-Version stimmt nicht mit dem Testziel überein"
             exit 1
           fi
-          set +e
-          export PYTHONPATH="${GITHUB_WORKSPACE}:${PYTHONPATH}"
           python -m pytest -v --tb=short -k "not slow" --disable-warnings --strict-markers
-          TEST_RESULT=$?
-          set -e
-
-          if [ $TEST_RESULT -eq 0 ]; then
-            echo "test_status=success" >> "${GITHUB_OUTPUT}"
-            echo "tested_homeassistant_version=$INSTALLED_HOMEASSISTANT_VERSION" >> "${GITHUB_OUTPUT}"
-            echo "test_summary=Alle Tests erfolgreich mit HA ${{ steps.test-stack.outputs.homeassistant_version }}" >> "${GITHUB_OUTPUT}"
-          elif [ $TEST_RESULT -eq 5 ]; then
-            echo "test_status=no-tests" >> "${GITHUB_OUTPUT}"
-            echo "test_summary=Keine Tests gefunden" >> "${GITHUB_OUTPUT}"
-          else
-            echo "test_status=failed" >> "${GITHUB_OUTPUT}"
-            echo "test_summary=Tests fehlgeschlagen mit HA ${{ steps.test-stack.outputs.homeassistant_version }}" >> "${GITHUB_OUTPUT}"
-            exit 1
-          fi
-
-      - name: Erfolg dokumentieren
-        if: steps.tests.outputs.test_status == 'success'
-        run: |
-          echo "Home Assistant ${{ steps.test-stack.outputs.homeassistant_version }} Kompatibilitätstest erfolgreich"
-          echo "Alle Tests bestanden"
+          echo "tested_homeassistant_version=$INSTALLED_HOMEASSISTANT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Home Assistant $INSTALLED_HOMEASSISTANT_VERSION Kompatibilitätstest erfolgreich"
 
       - name: Installierte HA-Testabhängigkeiten erfassen
         id: dependencies
         if: >-
-          steps.tests.outputs.test_status == 'success' &&
+          steps.tests.outputs.tested_homeassistant_version != '' &&
           (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
           github.ref == 'refs/heads/main' && github.ref_protected
         run: |
