@@ -203,7 +203,6 @@ jobs:
     if: needs.test.outputs.release-version != ''
     uses: ./.github/workflows/post-merge-ha-test.yml
     with:
-      force-test: true
       candidate-sha: ${{ inputs.merge-sha || github.sha }}
 
   release-hacs:

@@ -8,6 +8,7 @@ import pytest
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.setup import async_setup_component
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.sensorbridge_partheland import (
@@ -71,6 +72,11 @@ def _prepare_setup(hass, mocker, runtimes):
         new_callable=AsyncMock,
     )
     return forward_entry_setups
+
+
+async def test_home_assistant_loads_sensorbridge(hass):
+    assert await async_setup_component(hass, DOMAIN, {})
+    assert DOMAIN in hass.config.components
 
 
 async def test_setup_sets_entry_runtime_data(hass, mocker):
