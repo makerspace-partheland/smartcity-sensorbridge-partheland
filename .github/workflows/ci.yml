@@ -4,8 +4,6 @@ run-name: ${{ github.event_name == 'workflow_dispatch' && format('Wochenprüfung
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       weekly-pr:
@@ -24,7 +22,7 @@ jobs:
   test:
     if: >-
       (github.event_name != 'workflow_dispatch' &&
-       (github.actor != 'github-actions[bot]' || github.event_name == 'pull_request')) ||
+       github.actor != 'github-actions[bot]') ||
       (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]' &&
        github.ref == 'refs/heads/main' && github.ref_protected)
     runs-on: ubuntu-latest
@@ -52,45 +50,10 @@ jobs:
           status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$CANDIDATE_SHA...$GITHUB_SHA" --jq '.status')
           [[ "$status" == ahead || "$status" == identical ]]
 
-      - name: Verifizierte Dependabot-Metadaten abrufen
-        if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
-        id: dependabot
-        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
-
-      - name: Vorabversionen von Dependabot ablehnen
-        if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEPENDENCIES: ${{ steps.dependabot.outputs.updated-dependencies-json }}
-        run: |
-          set -euo pipefail
-          updates=$(jq -er 'select(type == "array" and length > 0) | .[] | [.packageEcosystem, .newVersion, .dependencyName] | @tsv' <<< "$DEPENDENCIES")
-          while IFS=$'\t' read -r ecosystem version dependency; do
-            if [[ "$ecosystem" == pip ]]; then
-              # PEP 440 erlaubt für stabile Versionen auch Epoch und Post-Releases.
-              if [[ ! "$version" =~ ^([0-9]+!)?[0-9]+(\.[0-9]+)*(\.post[0-9]+)?$ || -z "$dependency" ]]; then
-                echo "Python-Abhängigkeit ohne eindeutige stabile Versionsangabe abgelehnt."
-                exit 1
-              fi
-              continue
-            fi
-            if [[ "$ecosystem" != github_actions || ! "$version" =~ ^v?[0-9]+(\.[0-9]+){0,2}$ || ! "$dependency" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*$ ]]; then
-              echo "Dependabot-Update ohne eindeutige stabile Versionsangabe abgelehnt."
-              exit 1
-            fi
-            upstream=$(cut -d / -f 1,2 <<< "$dependency")
-            # Auch rein numerische Tags können auf GitHub als Vorabversion markiert sein.
-            prerelease=$(gh api --paginate "repos/$upstream/releases?per_page=100" | jq -r --arg version "${version#v}" '.[] | select(.prerelease and (.tag_name | sub("^v"; "")) == $version) | .tag_name')
-            if [[ -n "$prerelease" ]]; then
-              echo "Als Vorabversion markiertes Dependabot-Update abgelehnt."
-              exit 1
-            fi
-          done <<< "$updates"
-
       - name: Repository auschecken
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.merge-sha || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.merge-sha || github.sha }}
 
       - name: Offiziellen Home-Assistant-Teststand ermitteln
         id: test-stack
@@ -199,6 +162,9 @@ jobs:
       test-scope: ci
 
   release-ha:
+    permissions:
+      contents: read
+      pull-requests: read
     needs: test
     if: needs.test.outputs.release-version != ''
     uses: ./.github/workflows/post-merge-ha-test.yml

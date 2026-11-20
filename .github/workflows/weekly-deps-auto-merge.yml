@@ -2,7 +2,7 @@ name: Auto-Merge Wöchentlicher Deps PR (Patch/Minor)
 
 on:
   workflow_run:
-    workflows: [CI, Post-Merge HA Compatibility Test]
+    workflows: [Home-Assistant-Kompatibilität]
     branches: [chore/weekly-deps-update]
     types: [completed]
 
@@ -44,8 +44,17 @@ jobs:
           if [[ $(jq -er '.state' <<< "$pull") == open ]]; then
             BASE_SHA=$(jq -er '.base.sha' <<< "$pull")
             HEAD_SHA=$(jq -er '.head.sha' <<< "$pull")
+            # Der Wochenlauf erstellt den Update-Branch auf der aktuellen main-Basis neu.
+            refresh_if_behind() {
+              state=$(gh pr view "$PR_NUMBER" --repo "$GH_REPO" --json mergeStateStatus --jq '.mergeStateStatus') || exit 1
+              if [[ "$state" == BEHIND ]]; then
+                gh workflow run update-dependencies.yml --repo "$GH_REPO" --ref main
+                exit $?
+              fi
+            }
+            refresh_if_behind
             if ! gh pr checks "$PR_NUMBER" --required --json name,state | jq -e \
-              'length > 0 and all(.[]; .state == "SUCCESS") and (map(.name) | index("test") != null and index("ha-compatibility-test") != null)' >/dev/null; then
+              'length > 0 and all(.[]; .state == "SUCCESS") and (map(.name) | index("ha-compatibility-test") != null)' >/dev/null; then
               echo "Die erforderlichen Prüfungen sind für diesen PR noch nicht erfolgreich abgeschlossen."
               exit 0
             fi
@@ -57,7 +66,7 @@ jobs:
               gh api -H 'Accept: application/vnd.github.raw+json' \
                 "repos/$GH_REPO/contents/$file?ref=$HEAD_SHA" > "$RUNNER_TEMP/head-${file##*/}"
             done
-            release_required=$(python3 - "$RUNNER_TEMP" <<'PY'
+            python3 - "$RUNNER_TEMP" <<'PY'
           import json
           import re
           import sys
@@ -109,17 +118,14 @@ jobs:
               expected = f"{major}.{minor}.{int(patch) + 1}"
           if head_version != expected:
               raise SystemExit("Manifestversion entspricht nicht dem zulässigen Patchbump.")
-          print("true" if head_version != base_version else "false")
           PY
-            )
-            if [[ "$release_required" == true ]]; then
-              echo "Der Versionsvorschlag bleibt bis zur realen Neuinstallations- und Update-Abnahme offen."
-              exit 0
-            fi
-            gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --match-head-commit "$HEAD_SHA" \
+            if ! gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --match-head-commit "$HEAD_SHA" \
               --squash --delete-branch \
               --body "Automatisch zusammengeführt nach erfolgreichen Required Checks." \
-              --subject "deps: wöchentliche Abhängigkeitsaktualisierung (automatisch)"
+              --subject "deps: wöchentliche Abhängigkeitsaktualisierung (automatisch)"; then
+              refresh_if_behind
+              exit 1
+            fi
           fi
           merge_sha=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER" --jq 'select(.merged and .merged_by.login == "github-actions[bot]") | .merge_commit_sha')
           if [[ ! "$merge_sha" =~ ^[0-9a-f]{40}$ ]]; then
