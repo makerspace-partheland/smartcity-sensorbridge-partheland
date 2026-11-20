@@ -163,6 +163,7 @@ jobs:
 
   release-ha:
     permissions:
+      actions: read
       contents: read
       pull-requests: read
     needs: test
@@ -197,7 +198,7 @@ jobs:
       VERSION: ${{ needs.test.outputs.release-version }}
       CANDIDATE_SHA: ${{ inputs.merge-sha || github.sha }}
     steps:
-      # Der manuell abgenommene Versionsbump ist die Freigabe. Der Tag bindet den geprüften Commit.
+      # Der Tag bindet die neue Integrationsversion an den geprüften Commit.
       - name: Geprüften Quellstand für den Marketplace veröffentlichen
         run: |
           set -euo pipefail
