@@ -49,7 +49,8 @@ MANIFEST_PATH = "custom_components/sensorbridge_partheland/manifest.json"
 MIN_RELEASE_AGE_DAYS = 7
 
 
-PYTEST_HA_PACKAGE = "pytest-homeassistant-custom-component"
+PYTEST_HA_PACKAGE = "pytest-homeassistant"
+HOME_ASSISTANT_TEST_PACKAGES = ("homeassistant", PYTEST_HA_PACKAGE)
 PYTEST_HA_DEPENDENT_PACKAGES: set[str] = set()
 
 README_PATH = Path("README.md")
@@ -122,15 +123,6 @@ def is_stable_version(version: str) -> bool:
     return True
 
 
-def is_homeassistant_beta(version: str) -> bool:
-    """Return True if the version string represents a Home Assistant beta build."""
-    lowered = version.lower()
-    if 'b' not in lowered:
-        return False
-    # treat beta markers like 'b' while allowing post/dev releases
-    return not any(tag in lowered for tag in ('post', 'dev'))
-
-
 def update_type(old: str, new: str) -> str:
     o = numeric_tuple(old)
     n = numeric_tuple(new)
@@ -151,7 +143,7 @@ def fetch_package_info(package: str, version: str) -> dict:
 
 
 def fetch_pytest_ha_requirements(version: str) -> Dict[str, str]:
-    """Read requirements belonging to the selected, age-eligible PHACC release."""
+    """Read requirements from the selected pytest-homeassistant release."""
     PYTEST_HA_DEPENDENT_PACKAGES.clear()
     info = fetch_package_info(PYTEST_HA_PACKAGE, version)
 
@@ -167,16 +159,41 @@ def fetch_pytest_ha_requirements(version: str) -> Dict[str, str]:
 
 
 def fetch_pytest_ha_version() -> Optional[str]:
-    """Select the newest stable PHACC release that meets the minimum age."""
-    return fetch_latest_version(PYTEST_HA_PACKAGE)
+    """Select the newest published stable Home Assistant test pair."""
+    now = datetime.now(timezone.utc)
+    pytest_releases = eligible_package_versions(PYTEST_HA_PACKAGE, now)
+    ha_releases = eligible_package_versions("homeassistant", now)
+    return max(set(pytest_releases) & set(ha_releases), key=numeric_tuple, default=None)
+
+
+def fetch_test_stack(tested_version: Optional[str] = None) -> Tuple[str, Dict[str, str]]:
+    if tested_version and not all(
+        release_is_eligible(package, tested_version) for package in HOME_ASSISTANT_TEST_PACKAGES
+    ):
+        raise SystemExit(f"Für die getestete Version {tested_version} fehlt ein veröffentlichtes stabiles Paar.")
+    version = tested_version or fetch_pytest_ha_version()
+    if not version:
+        raise SystemExit("Kein stabiles Paar aus Home Assistant und pytest-homeassistant verfügbar.")
+    requirements = fetch_pytest_ha_requirements(version)
+    if requirements.get("homeassistant") != version:
+        raise SystemExit("pytest-homeassistant und Home Assistant müssen dieselbe Version haben.")
+    return version, requirements
+
+
+def minimum_python_version(homeassistant_version: str) -> str:
+    python_requires = fetch_package_info("homeassistant", homeassistant_version).get("requires_python", "")
+    match = re.fullmatch(r">=([0-9]+(?:\.[0-9]+)+)", python_requires)
+    if not match:
+        raise SystemExit(f"Nicht unterstützte Python-Anforderung von Home Assistant: {python_requires}")
+    return match.group(1)
 
 
 def eligible_stable_versions(
-    releases: Dict[str, List[dict]], now: Optional[datetime] = None
+    releases: Dict[str, List[dict]], now: Optional[datetime] = None, *, minimum_age_days: int = MIN_RELEASE_AGE_DAYS
 ) -> List[str]:
-    """Return stable versions whose published files are at least seven days old."""
+    """Return stable versions with published files that meet the required age."""
     reference_time = now or datetime.now(timezone.utc)
-    cutoff = reference_time - timedelta(days=MIN_RELEASE_AGE_DAYS)
+    cutoff = reference_time - timedelta(days=minimum_age_days)
     eligible: List[str] = []
 
     for version, files in releases.items():
@@ -209,23 +226,17 @@ def fetch_package_releases(package: str) -> Optional[Dict[str, List[dict]]]:
     return data.get("releases", {})
 
 
+def eligible_package_versions(package: str, now: Optional[datetime] = None) -> List[str]:
+    minimum_age_days = 0 if package.lower() in HOME_ASSISTANT_TEST_PACKAGES else MIN_RELEASE_AGE_DAYS
+    return eligible_stable_versions(fetch_package_releases(package) or {}, now, minimum_age_days=minimum_age_days)
+
+
 def release_is_eligible(package: str, version: str) -> bool:
-    releases = fetch_package_releases(package)
-    if releases is None:
-        return False
-    return version in eligible_stable_versions(releases)
+    return version in eligible_package_versions(package)
 
 
 def fetch_latest_version(package: str) -> Optional[str]:
-    releases = fetch_package_releases(package)
-    if releases is None:
-        return None
-
-    stable_versions = eligible_stable_versions(releases)
-    if not stable_versions:
-        return None
-    latest = max(stable_versions, key=numeric_tuple)
-    return latest
+    return max(eligible_package_versions(package), key=numeric_tuple, default=None)
 
 
 def rebuild_line(req: Requirement, new_version: str) -> str:
@@ -262,7 +273,7 @@ def process_requirements_file(
         pkg_name = req.package.lower()
         base_pkg = pkg_name  # extras already separated
 
-        if base_pkg == "pytest-homeassistant-custom-component" and pytest_ha_version:
+        if base_pkg == PYTEST_HA_PACKAGE and pytest_ha_version:
             target_version = pytest_ha_version
 
             if target_version == req.version:
@@ -271,7 +282,7 @@ def process_requirements_file(
                 if not release_is_eligible(base_pkg, target_version):
                     print(
                         f"Skipping {base_pkg} {target_version}: "
-                        f"release is less than {MIN_RELEASE_AGE_DAYS} days old or unavailable"
+                        "release is unavailable or outside the allowed publication window"
                     )
                     updated_lines.append(line)
                     continue
@@ -280,7 +291,7 @@ def process_requirements_file(
                     updated_lines.append(new_line)
                     file_changed = True
                     changes.append(
-                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (published PHACC release)"
+                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (pytest-homeassistant)"
                     )
                 else:
                     updated_lines.append(line)
@@ -290,19 +301,6 @@ def process_requirements_file(
 
         if base_pkg in PYTEST_HA_DEPENDENT_PACKAGES and base_pkg in pytest_ha_reqs:
             target_version = pytest_ha_reqs[base_pkg]
-            target_source = "published PHACC release"
-
-            if base_pkg == "homeassistant" and is_homeassistant_beta(target_version):
-                stable_homeassistant = fetch_latest_version(base_pkg)
-                if stable_homeassistant:
-                    target_version = stable_homeassistant
-                    target_source = "latest stable version from PyPI (PHACC target is beta)"
-                else:
-                    updated_lines.append(line)
-                    changes.append(
-                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (SKIPPED - beta version)"
-                    )
-                    continue
 
             if target_version == req.version:
                 updated_lines.append(line)
@@ -310,7 +308,7 @@ def process_requirements_file(
                 if not release_is_eligible(base_pkg, target_version):
                     print(
                         f"Skipping {base_pkg} {target_version}: "
-                        f"release is less than {MIN_RELEASE_AGE_DAYS} days old or unavailable"
+                        "release is unavailable or outside the allowed publication window"
                     )
                     updated_lines.append(line)
                     continue
@@ -319,7 +317,7 @@ def process_requirements_file(
                     updated_lines.append(new_line)
                     file_changed = True
                     changes.append(
-                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} ({target_source})"
+                        f"{path}: {req.package} {req.operator}{req.version} -> {req.operator}{target_version} (pytest-homeassistant)"
                     )
                 else:
                     updated_lines.append(line)
@@ -428,7 +426,7 @@ def update_readme(
         )
 
 
-def process_manifest(path: str, changes: List[str]) -> None:
+def process_manifest(path: str, changes: List[str], test_requirements: Dict[str, str]) -> None:
     if not os.path.exists(path):
         return
     with open(path, "r", encoding="utf-8") as fh:
@@ -453,12 +451,12 @@ def process_manifest(path: str, changes: List[str]) -> None:
         op = m.group("op")
         ver = m.group("version")
 
-        latest = fetch_latest_version(package)
+        latest = test_requirements.get(package.lower()) or fetch_latest_version(package)
         if not latest:
             new_reqs.append(entry)
             continue
         utype = update_type(ver, latest)
-        if utype in ("patch", "minor"):
+        if utype in ("patch", "minor") and release_is_eligible(package, latest):
             # Critical packages: still allow patch/minor only (already enforced)
             new_entry = f"{package}{extras}{op}{latest}"
             if new_entry != entry:
@@ -490,38 +488,19 @@ def main(tested_homeassistant_version: Optional[str] = None) -> int:
     if tested_homeassistant_version and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", tested_homeassistant_version):
         raise SystemExit("The tested Home Assistant version must be a stable X.Y.Z release.")
 
-    print('Selecting an age-eligible pytest-homeassistant-custom-component release...')
-    pytest_ha_version = fetch_pytest_ha_version()
-    if not pytest_ha_version:
-        raise SystemExit("No age-eligible PHACC release available; files were not changed.")
-    pytest_ha_reqs = fetch_pytest_ha_requirements(pytest_ha_version)
-    if "homeassistant" not in pytest_ha_reqs:
-        raise SystemExit("Selected PHACC release has no Home Assistant requirement; files were not changed.")
-    print(f"Loaded {len(pytest_ha_reqs)} requirements from PHACC {pytest_ha_version}")
-
-    target_ha = pytest_ha_reqs["homeassistant"]
-    if is_homeassistant_beta(target_ha):
-        target_ha = fetch_latest_version("homeassistant")
-        if not target_ha:
-            raise SystemExit("No age-eligible stable Home Assistant release available; files were not changed.")
-        pytest_ha_reqs["homeassistant"] = target_ha
+    pytest_ha_version, pytest_ha_reqs = fetch_test_stack(tested_homeassistant_version)
+    print(f"Loaded {len(pytest_ha_reqs)} requirements from pytest-homeassistant {pytest_ha_version}")
 
     # Validate metadata for both the existing and candidate versions before any writes.
     # An existing newer requirement may be retained by process_requirements_file.
     ha_versions = {extract_homeassistant_version(path) for path in REQ_FILES}
     ha_versions.discard(None)
-    ha_versions.add(target_ha)
-    python_versions: Dict[str, str] = {}
-    for version in sorted(ha_versions):
-        python_requires = fetch_package_info("homeassistant", version).get("requires_python", "")
-        python_match = re.fullmatch(r">=([0-9]+(?:\.[0-9]+)*)", python_requires)
-        if not python_match:
-            raise SystemExit(f"Unsupported Home Assistant Python requirement: {python_requires}")
-        python_versions[version] = python_match.group(1)
+    ha_versions.add(pytest_ha_version)
+    python_versions = {version: minimum_python_version(version) for version in sorted(ha_versions)}
 
     for path in REQ_FILES:
         process_requirements_file(path, changes, pytest_ha_reqs, pytest_ha_version)
-    process_manifest(MANIFEST_PATH, changes)
+    process_manifest(MANIFEST_PATH, changes, pytest_ha_reqs)
 
     ha_version = extract_homeassistant_version('requirements_test.txt')
     if ha_version is None:
@@ -545,5 +524,11 @@ if __name__ == "__main__":
         "--tested-homeassistant-version",
         help="Home Assistant version confirmed by a successful compatibility run.",
     )
+    parser.add_argument("--test-stack", action="store_true", help="Print GitHub Actions test outputs.")
     args = parser.parse_args()
-    raise SystemExit(main(args.tested_homeassistant_version))
+    if args.test_stack:
+        version, _ = fetch_test_stack()
+        print(f"homeassistant_version={version}")
+        print(f"python_version=~{minimum_python_version(version)}")
+    else:
+        raise SystemExit(main(args.tested_homeassistant_version))

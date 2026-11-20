@@ -286,7 +286,7 @@ async def test_user_flow_abort_if_already_configured(
     """Ein zweiter Start sollte abbrechen, wenn bereits ein Eintrag existiert."""
     mock_integration_setup(hass)
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -692,7 +692,7 @@ async def test_options_flow_sync_entry(
     """Optionsflow startet synchron (kein Coroutine) und aktualisiert den Eintrag."""
     mock_integration_setup(hass)
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -739,7 +739,7 @@ async def test_options_flow_adds_pollen_without_changing_existing_selection(
     """Ein Alt-Eintrag behält seine Auswahl und startet mit deaktivierter Quelle."""
     mock_integration_setup(hass)
 
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     original_metadata = {
         "Naunhof_Nr1": {
@@ -1016,7 +1016,7 @@ async def test_options_flow_keeps_filtered_existing_device(
     hass: HomeAssistant, mock_config_service, mock_integration_setup
 ):
     mock_integration_setup(hass)
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     mock_config_service.get_selection_candidates.return_value = {
         "senseBox": [
@@ -1081,7 +1081,7 @@ async def test_options_flow_existing_offline_uses_stored_sensor_counts(
     mocker,
 ):
     mock_integration_setup(hass)
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     from custom_components.sensorbridge_partheland.config_service import ConfigService
 
@@ -1231,7 +1231,7 @@ async def test_options_flow_removes_only_intentionally_deselected_device(
 ):
     """Die Gesamtansicht kann ein bestehendes Gerät bewusst entfernen."""
     mock_integration_setup(hass)
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -1270,7 +1270,7 @@ async def test_options_flow_api_failure_does_not_change_entry(
 ):
     """Ein Katalogfehler verändert den bestehenden Config Entry nicht."""
     mock_integration_setup(hass)
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     original_data = {
         CONF_SELECTED_DEVICES: ["Naunhof_Nr1"],
@@ -1329,7 +1329,7 @@ async def test_options_flow_snapshot_failure_does_not_update_or_reload(
 ):
     """Ein Fehler beim finalen Snapshot lässt den Config Entry unangetastet."""
     mock_integration_setup(hass)
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     original_data = {
         CONF_SELECTED_DEVICES: ["Naunhof_Nr1"],
@@ -1375,7 +1375,7 @@ async def test_migration_snapshots_api_metadata_and_legacy_sensors(
     hass: HomeAssistant, mocker
 ):
     from homeassistant.helpers import entity_registry as er
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -1429,7 +1429,7 @@ async def test_migration_snapshots_api_metadata_and_legacy_sensors(
 
 async def test_migration_loads_existing_entry_without_api(hass: HomeAssistant, mocker):
     from homeassistant.helpers import entity_registry as er
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     entry = MockConfigEntry(
         domain=DOMAIN,

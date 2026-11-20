@@ -1,4 +1,4 @@
-name: HACS Validation
+name: Marketplace-Validierung
 
 on:
   pull_request:
@@ -23,7 +23,7 @@ jobs:
         with:
           ref: ${{ inputs.candidate-sha || github.event.pull_request.head.sha || github.sha }}
 
-      - name: HACS-Validierung
+      - name: Repository für den Marketplace validieren
         uses: hacs/action@main
         with:
           category: integration

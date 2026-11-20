@@ -76,7 +76,6 @@ logs.txt
 .bmad-core/
 requirements_test_all.txt
 scripts/
-pyproject.toml
 pytest.ini
 mypy.ini
 .flake8

@@ -53,27 +53,29 @@ def test_eligible_stable_versions_requires_all_files_to_reach_minimum_age() -> N
     assert eligible == []
 
 
-def test_update_uses_eligible_test_stack_when_upstream_is_fresh(monkeypatch, tmp_path):
-    package = "pytest-homeassistant-custom-component"
+def test_update_uses_verified_test_stack_even_when_a_newer_pair_is_available(monkeypatch, tmp_path):
+    package = "pytest-homeassistant"
     old = [release_file("2000-01-01T00:00:00Z")]
+    recent = [release_file(datetime.now(timezone.utc).isoformat())]
     fresh = [release_file("2999-01-01T00:00:00Z")]
     responses = {
-        "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master/version": "0.13.374",
-        "https://raw.githubusercontent.com/MatthewFlamm/pytest-homeassistant-custom-component/master/requirements_test.txt": "homeassistant==2026.10.3\n",
         f"https://pypi.org/pypi/{package}/json": {
-            "releases": {"0.13.373": old, "0.13.374": fresh},
+            "releases": {"2026.11.1": old, "2026.11.2": recent, "2026.11.3": fresh},
         },
-        f"https://pypi.org/pypi/{package}/0.13.373/json": {
-            "info": {"requires_dist": ["homeassistant==2026.10.2"]},
+        f"https://pypi.org/pypi/{package}/2026.11.1/json": {
+            "info": {"requires_dist": ["homeassistant==2026.11.1", "paho-mqtt==2.1.0"]},
         },
         "https://pypi.org/pypi/homeassistant/json": {
-            "releases": {"2026.10.2": old, "2026.10.3": fresh},
+            "releases": {"2026.11.1": old, "2026.11.2": recent, "2026.11.3": fresh},
         },
-        "https://pypi.org/pypi/homeassistant/2026.10.2/json": {
+        "https://pypi.org/pypi/homeassistant/2026.11.1/json": {
             "info": {"requires_python": ">=3.14.2"},
         },
         "https://pypi.org/pypi/homeassistant/2026.9.3/json": {
             "info": {"requires_python": ">=3.13.2"},
+        },
+        "https://pypi.org/pypi/paho-mqtt/json": {
+            "releases": {"2.1.0": old, "2.2.0": old},
         },
     }
 
@@ -85,7 +87,7 @@ def test_update_uses_eligible_test_stack_when_upstream_is_fresh(monkeypatch, tmp
     monkeypatch.chdir(tmp_path)
     requirements = tmp_path / "requirements_test.txt"
     requirements.write_text(
-        f"homeassistant >= 2026.9.3\n{package} >= 0.13.356\n",
+        f"homeassistant >= 2026.9.3\n{package} >= 2026.11.0\n",
         encoding="utf-8",
     )
     readme = tmp_path / "README.md"
@@ -95,28 +97,35 @@ def test_update_uses_eligible_test_stack_when_upstream_is_fresh(monkeypatch, tmp
         encoding="utf-8",
     )
 
-    assert UPDATE_REQUIREMENTS.main("2026.10.3") == 0
+    manifest = tmp_path / UPDATE_REQUIREMENTS.MANIFEST_PATH
+    manifest.parent.mkdir(parents=True)
+    original_manifest = '{"requirements": ["paho-mqtt>=2.1.0"], "version": "1.6.2"}\n'
+    manifest.write_text(original_manifest, encoding="utf-8")
+
+    assert UPDATE_REQUIREMENTS.fetch_pytest_ha_version() == "2026.11.2"
+    assert UPDATE_REQUIREMENTS.main("2026.11.1") == 0
     assert requirements.read_text() == (
-        f"homeassistant >= 2026.10.2\n{package} >= 0.13.373\n"
+        f"homeassistant >= 2026.11.1\n{package} >= 2026.11.1\n"
     )
+    assert manifest.read_text(encoding="utf-8") == original_manifest
     assert "Python 3.14.2 oder neuer" in readme.read_text()
-    assert "Home Assistant 2026.10.2 oder neuer" in readme.read_text()
-    assert "Zuletzt erfolgreich getestet mit Home Assistant 2026.10.3." in readme.read_text()
+    assert "Home Assistant 2026.11.1 oder neuer" in readme.read_text()
+    assert "Zuletzt erfolgreich getestet mit Home Assistant 2026.11.1." in readme.read_text()
     before = (requirements.read_bytes(), readme.read_bytes())
-    assert UPDATE_REQUIREMENTS.main("2026.10.3") == 0
+    assert UPDATE_REQUIREMENTS.main("2026.11.1") == 0
     assert before == (requirements.read_bytes(), readme.read_bytes())
 
 
-@pytest.mark.parametrize("version", [None, "0.13.373"])
+@pytest.mark.parametrize("version", [None, "2026.11.1"])
 def test_missing_test_stack_metadata_stops_before_editing(monkeypatch, tmp_path, version):
     monkeypatch.chdir(tmp_path)
     requirements = tmp_path / "requirements_test.txt"
     original = "homeassistant >= 2026.9.3\n"
     requirements.write_text(original, encoding="utf-8")
     monkeypatch.setattr(UPDATE_REQUIREMENTS, "fetch_pytest_ha_version", lambda: version)
-    monkeypatch.setattr(UPDATE_REQUIREMENTS, "fetch_pytest_ha_requirements", lambda _: {})
+    monkeypatch.setattr(UPDATE_REQUIREMENTS, "fetch_pytest_ha_requirements", lambda _: {"homeassistant": "2026.10.4"})
 
-    message = "No age-eligible PHACC release" if version is None else "no Home Assistant requirement"
+    message = "Kein stabiles Paar" if version is None else "dieselbe Version"
     with pytest.raises(SystemExit, match=message):
         UPDATE_REQUIREMENTS.main()
 
@@ -148,7 +157,7 @@ def test_invalid_python_metadata_stops_before_editing(monkeypatch, tmp_path, met
     requirements = tmp_path / "requirements_test.txt"
     original = "homeassistant >= 2026.9.3\n"
     requirements.write_text(original, encoding="utf-8")
-    monkeypatch.setattr(UPDATE_REQUIREMENTS, "fetch_pytest_ha_version", lambda: "0.13.373")
+    monkeypatch.setattr(UPDATE_REQUIREMENTS, "fetch_pytest_ha_version", lambda: "2026.10.2")
     monkeypatch.setattr(
         UPDATE_REQUIREMENTS, "fetch_pytest_ha_requirements",
         lambda _: {"homeassistant": "2026.10.2"},
@@ -164,7 +173,7 @@ def test_invalid_python_metadata_stops_before_editing(monkeypatch, tmp_path, met
         with pytest.raises(URLError, match="metadata unavailable"):
             UPDATE_REQUIREMENTS.main()
     else:
-        with pytest.raises(SystemExit, match="Unsupported Home Assistant Python requirement"):
+        with pytest.raises(SystemExit, match="Nicht unterstützte Python-Anforderung"):
             UPDATE_REQUIREMENTS.main()
 
     assert requirements.read_text() == original
