@@ -13,7 +13,7 @@ on:
       - '.github/workflows/post-merge-ha-test.yml'
   pull_request:
     branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited]
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -33,9 +33,13 @@ permissions:
 
 jobs:
   ha-compatibility-test:
-    # Ein übersprungener Entwurf darf keinen Pflichtcheck gleichen Namens erfüllen.
-    name: ${{ github.event.pull_request.draft && 'Entwurf' || 'ha-compatibility-test' }}
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    # Ein übersprungener Job darf den Pflichtcheck für den Merge nicht erfüllen.
+    name: >-
+      ${{ (github.event.pull_request.draft || (github.event.action == 'edited' && !github.event.changes.base.ref.from))
+          && 'Keine HA-Prüfung erforderlich' || 'ha-compatibility-test' }}
+    if: >-
+      github.event_name != 'pull_request' ||
+      (!github.event.pull_request.draft && (github.event.action != 'edited' || github.event.changes.base.ref.from != ''))
     concurrency:
       group: ha-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}-${{ inputs.candidate-sha }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
