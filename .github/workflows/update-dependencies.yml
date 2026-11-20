@@ -40,25 +40,15 @@ jobs:
       - name: Repository auschecken
         uses: actions/checkout@v7
 
-      - name: Python einrichten
-        uses: actions/setup-python@v7.1.0
-        with:
-          python-version: '3.14.10'
-
       - name: Requirements aktualisieren (nur patch/minor)
         id: update-deps
         env:
           TESTED_HOMEASSISTANT_VERSION: ${{ needs.compatibility.outputs.tested_homeassistant_version }}
         run: |
-          python .github/scripts/update_requirements.py --tested-homeassistant-version "$TESTED_HOMEASSISTANT_VERSION"
-          if git diff --unified=0 -- requirements_test.txt | grep -Eq '^[+-]homeassistant[[:space:]]'; then
-            HA_VERSION=$(grep "^homeassistant" requirements_test.txt | sed -E 's/^[^#]*homeassistant[[:space:]]*(==|>=)[[:space:]]*//')
-            echo "ha_updated=true" >> $GITHUB_OUTPUT
-            echo "homeassistant_version=$HA_VERSION" >> $GITHUB_OUTPUT
-            echo "Home Assistant wird auf Version $HA_VERSION aktualisiert"
-          else
-            echo "ha_updated=false" >> $GITHUB_OUTPUT
-            echo "homeassistant_version=" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          python3 .github/scripts/update_requirements.py --tested-homeassistant-version "$TESTED_HOMEASSISTANT_VERSION"
+          if ! git diff --quiet -- README.md; then
+            echo "readme_updated=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Pull Request erstellen
@@ -71,7 +61,9 @@ jobs:
           body: |
             Automatische Aktualisierung der Python-Abhängigkeiten.
 
-            ${{ steps.update-deps.outputs.ha_updated == 'true' && format('Home Assistant: {0}', steps.update-deps.outputs.homeassistant_version) || '' }}
+            Die GitHub-Tests mit Home Assistant ${{ needs.compatibility.outputs.tested_homeassistant_version }} waren erfolgreich.
+
+            ${{ steps.update-deps.outputs.readme_updated == 'true' && 'Die Versionsangaben in der README wurden aktualisiert.' || '' }}
           labels: dependencies, python
           branch: chore/weekly-deps-update
           delete-branch: true

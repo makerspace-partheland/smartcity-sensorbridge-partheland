@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock, call, patch
 import paho.mqtt.client as mqtt
 import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.sensorbridge_partheland.const import (
     CONF_SELECTED_DEVICES,

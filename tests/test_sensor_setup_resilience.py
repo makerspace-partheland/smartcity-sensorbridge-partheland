@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.sensorbridge_partheland import sensor as sensor_platform
 from custom_components.sensorbridge_partheland.const import (

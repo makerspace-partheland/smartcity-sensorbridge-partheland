@@ -27,29 +27,15 @@ Die SensorBridge liest Daten von senseBox:home-Stationen und LoRaWAN-Sensoren au
 
 - Python 3.14.2 oder neuer
 - Home Assistant 2026.10.4 oder neuer
-- HACS (Home Assistant Community Store) für die einfache Installation
 - Internetverbindung
 
-## Installation über HACS
+## Installation über den Home Assistant Marketplace
 
-1. **Repository in HACS hinzufügen**
-   - Öffne HACS in der Seitenleiste
-   - Klicke auf **⋯** (drei Punkte oben rechts)
-   - Wähle **Benutzerdefiniertes Repository**
-   - Füge diese URL hinzu: `https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland`
-   - Wähle als Typ **Integration**
-   - Klicke auf **Hinzufügen**
-
-2. **Integration installieren**
-   - Öffne in HACS den Bereich **Integrationen**
-   - Wähle **SmartCity SensorBridge Partheland** und klicke auf **Installieren**
-   - Starte Home Assistant neu
-
-3. **Integration einrichten**
-   - Gehe zu **Einstellungen** → **Geräte & Dienste**
-   - Klicke auf **+ Integration hinzufügen**
-   - Suche nach "SmartCity SensorBridge Partheland"
-   - Folge der Einrichtung
+1. [Verbinde dein GitHub-Konto mit Home Assistant](https://www.home-assistant.io/integrations/marketplace/#connecting-github).
+2. Öffne **Einstellungen** → **Marketplace** und wähle **Über Link hinzufügen**.
+3. Gib `https://github.com/makerspace-partheland/smartcity-sensorbridge-partheland` ein und wähle **Hinzufügen**.
+4. Öffne **SmartCity SensorBridge Partheland** im Marketplace und wähle **Installieren**.
+5. Folge der Einrichtung. Öffnet sie sich nicht automatisch, füge die Integration unter **Einstellungen** → **Geräte & Dienste** hinzu.
 
 ## Manuelle Installation
 
@@ -86,7 +72,9 @@ logger:
 
 ## Updates
 
-HACS zeigt neue Versionen an. Zusätzlich halten GitHub Actions die Abhängigkeiten wöchentlich aktuell und erstellen PRs. Dependabot aktualisiert GitHub-Actions-Versionen zeitversetzt. Erfolgreiche Abhängigkeits-PRs werden nach bestandenem CI- und HA-Kompatibilitätscheck zusammengeführt. Größere Versionswechsel werden getrennt geprüft. Zuletzt erfolgreich getestet mit Home Assistant 2026.10.4.
+Der Marketplace zeigt neue Versionen unter **Einstellungen** → **Updates** an. Nach einem Update ist ein Neustart nötig.
+
+Zuletzt erfolgreich getestet mit Home Assistant 2026.10.4.
 
 Bei manueller Installation muss die aktuelle Version heruntergeladen und über die vorhandenen Dateien kopiert werden.
 

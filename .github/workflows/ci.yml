@@ -92,18 +92,24 @@ jobs:
         with:
           ref: ${{ inputs.merge-sha || github.event.pull_request.head.sha || github.sha }}
 
+      - name: Offiziellen Home-Assistant-Teststand ermitteln
+        id: test-stack
+        run: python3 .github/scripts/update_requirements.py --test-stack >> "$GITHUB_OUTPUT"
+
       - name: Python einrichten
         uses: actions/setup-python@v7.1.0
         with:
-          python-version: '3.14.10'
+          python-version: ${{ steps.test-stack.outputs.python_version }}
 
       - name: Test- und Lint-Abhängigkeiten installieren
+        env:
+          TESTED_HA: ${{ steps.test-stack.outputs.homeassistant_version }}
         run: |
           set -euo pipefail
           python -m pip install --only-binary=:all: --require-hashes -r .github/requirements-ci.txt
           cutoff=$(date -u -d '168 hours ago' +%Y-%m-%dT%H:%M:%SZ)
           uv pip install --python "$(command -v python)" --index-url https://pypi.org/simple \
-            --exclude-newer "$cutoff" -r requirements_test.txt
+            --exclude-newer "$cutoff" -r requirements_test.txt "pytest-homeassistant==$TESTED_HA"
 
       - name: Lint (flake8)
         run: |
@@ -130,6 +136,7 @@ jobs:
       - name: Neue Integrationsversion erkennen
         id: release-version
         if: >-
+          github.repository == 'makerspace-partheland/smartcity-sensorbridge-partheland' &&
           steps.tests.outputs.passed == 'true' && github.event_name != 'pull_request' &&
           github.ref == 'refs/heads/main' && github.ref_protected
         env:
@@ -151,8 +158,21 @@ jobs:
           stable='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           if [[ ! "$version" =~ $stable || ! "$previous" =~ $stable ||
                 $(printf '%s\n' "$previous" "$version" | sort -V | tail -1) != "$version" ]]; then
-            echo "Für ein HACS-Release ist eine höhere stabile Manifestversion erforderlich."
+            echo "Für ein Integrationsrelease ist eine höhere stabile Manifestversion erforderlich."
             exit 1
+          fi
+          released_tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
+          if [[ ! "${released_tag#v}" =~ $stable || "$released_tag" != v* ]]; then
+            echo "Die zuletzt veröffentlichte Integrationsversion ist ungültig."
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "refs/tags/$released_tag"
+          changed=$(git diff --name-only FETCH_HEAD HEAD -- "${manifest%/*}/" ":(exclude)$manifest")
+          released_manifest=$(git show "FETCH_HEAD:$manifest" | jq -cS 'del(.version)')
+          candidate_manifest=$(jq -cS 'del(.version)' "$manifest")
+          if [[ -z "$changed" && "$released_manifest" == "$candidate_manifest" ]]; then
+            echo "Seit $released_tag hat sich die ausgelieferte Integration nicht geändert."
+            exit 0
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -187,6 +207,7 @@ jobs:
       candidate-sha: ${{ inputs.merge-sha || github.sha }}
 
   release-hacs:
+    name: Marketplace-Validierung für den Release-Kandidaten
     needs: test
     if: needs.test.outputs.release-version != ''
     uses: ./.github/workflows/hacs-validate.yml
@@ -212,7 +233,7 @@ jobs:
       CANDIDATE_SHA: ${{ inputs.merge-sha || github.sha }}
     steps:
       # Der manuell abgenommene Versionsbump ist die Freigabe. Der Tag bindet den geprüften Commit.
-      - name: Geprüften Quellstand für HACS veröffentlichen
+      - name: Geprüften Quellstand für den Marketplace veröffentlichen
         run: |
           set -euo pipefail
           tag="v$VERSION"

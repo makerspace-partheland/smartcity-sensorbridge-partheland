@@ -64,7 +64,8 @@ jobs:
           fi
 
           # Prüfe ob HA-relevante Dateien geändert wurden
-          if git diff "${DIFF_BASE}" HEAD --name-only | grep -E "(requirements.*\.txt|manifest\.json)"; then
+          changes=$(git diff "${DIFF_BASE}" HEAD --name-only)
+          if grep -Eq '^((custom_components|tests)/|requirements[^/]*\.txt$|pyproject\.toml$|\.github/(requirements-ci\.txt|scripts/update_requirements\.py|workflows/post-merge-ha-test\.yml)$)' <<< "$changes"; then
             echo "test_needed=true" >> "${GITHUB_OUTPUT}"
             echo "HA-relevante Änderungen erkannt - Test wird ausgeführt"
           else
@@ -78,28 +79,10 @@ jobs:
           echo "HA-Kompatibilitätstest übersprungen - keine relevanten Änderungen"
           echo "Check erfolgreich abgeschlossen"
 
-      - name: Veröffentlichten PHACC-Teststand ermitteln
+      - name: Offiziellen Home-Assistant-Teststand ermitteln
         if: steps.check-needed.outputs.test_needed == 'true'
         id: test-stack
-        run: |
-          python3 - <<'PYTHON'
-          import os
-          import sys
-          sys.path.insert(0, ".github/scripts")
-          from update_requirements import fetch_pytest_ha_version, fetch_pytest_ha_requirements
-
-          phacc_version = fetch_pytest_ha_version()
-          if not phacc_version:
-              raise SystemExit("Kein geeigneter veröffentlichter PHACC-Teststand verfügbar.")
-          homeassistant_version = fetch_pytest_ha_requirements(phacc_version).get("homeassistant")
-          if not homeassistant_version:
-              raise SystemExit("Die Home-Assistant-Version des PHACC-Teststands fehlt.")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write("python_version=3.14.10\n")
-              output.write(f"phacc_version={phacc_version}\n")
-              output.write(f"homeassistant_version={homeassistant_version}\n")
-          print(f"PHACC {phacc_version}, Home Assistant {homeassistant_version}")
-          PYTHON
+        run: python3 .github/scripts/update_requirements.py --test-stack >> "$GITHUB_OUTPUT"
 
       - name: Python einrichten
         if: steps.check-needed.outputs.test_needed == 'true'
@@ -109,16 +92,26 @@ jobs:
 
       - name: Dependencies installieren
         if: steps.check-needed.outputs.test_needed == 'true'
+        env:
+          TESTED_HA: ${{ steps.test-stack.outputs.homeassistant_version }}
         run: |
           set -euo pipefail
           python -m pip install --only-binary=:all: --require-hashes -r .github/requirements-ci.txt
           cutoff=$(date -u -d '168 hours ago' +%Y-%m-%dT%H:%M:%SZ)
-          grep -Eiv '^[[:space:]]*(homeassistant|pytest-homeassistant-custom-component)[[:space:]]*(==|>=|<=|~=|>|<)' \
-            requirements_test.txt > "$RUNNER_TEMP/requirements_test_base.txt" || test "$?" -eq 1
           uv pip install --python "$(command -v python)" --index-url https://pypi.org/simple \
-            --exclude-newer "$cutoff" -r "$RUNNER_TEMP/requirements_test_base.txt" \
-            "pytest-homeassistant-custom-component==${{ steps.test-stack.outputs.phacc_version }}" \
-            "homeassistant==${{ steps.test-stack.outputs.homeassistant_version }}"
+            --exclude-newer "$cutoff" -r requirements_test.txt "pytest-homeassistant==$TESTED_HA"
+
+      - name: Laufzeitabhängigkeiten des Release-Kandidaten prüfen
+        if: steps.check-needed.outputs.test_needed == 'true' && inputs.candidate-sha != ''
+        run: |
+          set -euo pipefail
+          manifest=custom_components/sensorbridge_partheland/manifest.json
+          constraints=$(python -c 'from pathlib import Path; import homeassistant; print(Path(homeassistant.__file__).with_name("package_constraints.txt"))')
+          jq -er '.requirements | type == "array" and all(.[]; type == "string")' "$manifest" > /dev/null
+          jq -r '.requirements[]' "$manifest" > "$RUNNER_TEMP/sensorbridge-runtime-requirements.txt"
+          cutoff=$(date -u -d '168 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          uv pip install --dry-run --python "$(command -v python)" --index-url https://pypi.org/simple \
+            --exclude-newer "$cutoff" -c "$constraints" -r "$RUNNER_TEMP/sensorbridge-runtime-requirements.txt"
 
       - name: Kompatibilitätstest ausführen
         if: steps.check-needed.outputs.test_needed == 'true'
