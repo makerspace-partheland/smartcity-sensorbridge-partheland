@@ -1,14 +1,9 @@
-name: Abhängigkeitsmeldungen erfassen
-description: Liest Dependabot und versionsbezogene GitHub-Advisories ohne Paketinstallation
-outputs:
-  report:
-    description: Strukturierter Bericht zu bekannten Abhängigkeitsmeldungen
-    value: ${{ steps.inventory.outputs.report }}
+name: Öffentliche Sicherheitskataloge prüfen
+description: Fasst öffentliche Sicherheitshinweise zu Abhängigkeiten ohne Paketinstallation zusammen
 runs:
   using: composite
   steps:
-    - name: Aktuelle Abhängigkeitsmeldungen erfassen
-      id: inventory
+    - name: Öffentliche Hinweise zusammenfassen
       shell: bash
       env:
         INVENTORY_ACTION_PATH: ${{ github.action_path }}

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Native GitHub-Meldungen zusammenstellen; keine Installation oder Sicherheitsausnahme."""
-from datetime import datetime, timezone
+"""Öffentliche Sicherheitshinweise zu Projektabhängigkeiten zusammenfassen."""
 from functools import lru_cache
 import json
 import os
@@ -39,10 +38,8 @@ def affected(ecosystem, packages):
         query = urllib.parse.urlencode({'ecosystem': ecosystem, 'affects': ','.join(packages),
                                         'type': kind, 'is_withdrawn': 'false', 'per_page': 100})
         for finding in api('advisories?' + query):
-            findings[finding['ghsa_id']] = {'id': finding['ghsa_id'], 'cve': finding.get('cve_id'),
-              'severity': finding['severity'], 'summary': finding['summary'], 'type': finding['type'],
-              'url': finding['html_url'], 'vulnerabilities': finding['vulnerabilities']}
-    return list(findings.values())
+            findings[finding['ghsa_id']] = finding.get('cve_id')
+    return findings
 
 
 def action_references(directory):
@@ -56,49 +53,43 @@ def action_references(directory):
 
 
 def main():
-    repository = os.environ['GITHUB_REPOSITORY']
-    report = {'schema': 1, 'repository': repository, 'source_sha': os.environ['GITHUB_SHA'],
-              'checked_at': datetime.now(timezone.utc).isoformat(), 'dependabot': [],
-              'actions': [], 'unmapped_actions': [], 'vendored': []}
-    for alert in api(f'repos/{repository}/dependabot/alerts?state=open&per_page=100'):
-        report['dependabot'].append({'number': alert['number'], 'package': alert['dependency']['package'],
-          'manifest': alert['dependency']['manifest_path'], 'id': alert['security_advisory']['ghsa_id'],
-          'cve': alert['security_advisory'].get('cve_id'), 'severity': alert['security_advisory']['severity'],
-          'fixed': alert['security_vulnerability'].get('first_patched_version'), 'url': alert['html_url']})
-    owner = repository.split('/')[0].lower()
+    # Öffentliche Läufe liefern nur eine Zusammenfassung aus öffentlichen Katalogen.
+    owner = os.environ['GITHUB_REPOSITORY'].split('/')[0].lower()
+    version_findings = {}
+    unmapped_actions = 0
+    package_findings = {}
     for action, reference in action_references(Path('.github/workflows')):
         # Organization-owned components are reviewed with their own repositories.
         if action.split('/')[0].lower() == owner:
             continue
         versions = action_versions(action, reference)
         if not versions:
-            report['unmapped_actions'].append({'repository': action, 'reference': reference,
-                'advisory_scope': 'package', 'applicability': 'unknown',
-                'findings': affected('actions', [action])})
+            unmapped_actions += 1
+            package_findings.update(affected('actions', [action]))
             continue
-        report['actions'].append({'repository': action, 'reference': reference, 'versions': versions,
-                                  'findings': affected('actions', [action + '@' + version for version in versions])})
+        version_findings.update(affected('actions', [action + '@' + version for version in versions]))
     version_file = Path('swagger-ui.version')
     if version_file.is_file():
         version = version_file.read_text().strip().removeprefix('v')
         if not re.fullmatch(r'\d+\.\d+\.\d+', version):
             raise ValueError('Ungültige vendorte Swagger-UI-Version')
-        report['vendored'].append({'package': 'swagger-ui', 'version': version,
-                                  'findings': affected('npm', ['swagger-ui@' + version, 'swagger-ui-dist@' + version])})
+        version_findings.update(affected('npm', ['swagger-ui@' + version, 'swagger-ui-dist@' + version]))
     request = urllib.request.Request('https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json',
                                      headers={'User-Agent': 'github-dependency-inventory'})
     with urllib.request.urlopen(request, timeout=30) as response:
         kev = json.load(response)
     if not isinstance(kev.get('vulnerabilities'), list) or not kev['vulnerabilities']:
         raise ValueError('CISA-Katalog fehlt')
-    identifiers = set(re.findall(r'CVE-\d{4}-\d+', json.dumps(report)))
-    report['known_exploited'] = [v for v in kev['vulnerabilities'] if v['cveID'] in identifiers]
-    print('DEPENDENCY_REPORT ' + json.dumps(report, sort_keys=True))
-    with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
-        stream.write('report=' + json.dumps(report, separators=(',', ':')) + '\n')
+    matched_cves = set(version_findings.values())
+    known_exploited = {entry['cveID'] for entry in kev['vulnerabilities'] if entry['cveID'] in matched_cves}
     with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
-        stream.write('Aktuelle Dependabot-, Action- und gegebenenfalls Swagger-Meldungen wurden erfasst. '
-                     'Ein erfolgreicher Abruf bedeutet nicht, dass offene Befunde behoben sind.\n')
+        stream.write(
+            '### Öffentliche Sicherheitskataloge\n\n'
+            f'- Öffentliche Sicherheitshinweise zu geprüften Versionen ({len(version_findings)})\n'
+            f'- Zugehörige CVE im CISA-Katalog ({len(known_exploited)})\n'
+            f'- Action-Referenzen ohne eindeutige Versionszuordnung ({unmapped_actions})\n'
+            f'- Öffentliche Pakethinweise mit ungeklärter Anwendbarkeit ({len(package_findings)})\n'
+        )
 
 
 if __name__ == '__main__':
