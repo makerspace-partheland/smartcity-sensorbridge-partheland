@@ -1,0 +1,16 @@
+name: Abhängigkeitsmeldungen erfassen
+description: Liest Dependabot und versionsbezogene GitHub-Advisories ohne Paketinstallation
+outputs:
+  report:
+    description: Strukturierter Bericht zu bekannten Abhängigkeitsmeldungen
+    value: ${{ steps.inventory.outputs.report }}
+runs:
+  using: composite
+  steps:
+    - name: Aktuelle Abhängigkeitsmeldungen erfassen
+      id: inventory
+      shell: bash
+      env:
+        INVENTORY_ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ github.token }}
+      run: python3 -B "$INVENTORY_ACTION_PATH/inventory.py"
